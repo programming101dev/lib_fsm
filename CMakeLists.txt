@@ -27,7 +27,6 @@ target_include_directories(p101_fsm PRIVATE /usr/local/include)
 target_link_directories(p101_fsm PRIVATE /usr/local/lib)
 target_link_directories(p101_fsm PRIVATE /usr/local/lib64)
 
-# Enable UBSan checks
 target_compile_options(p101_fsm PRIVATE -fsanitize=undefined -fsanitize=address)
 target_link_libraries(p101_fsm PRIVATE -fsanitize=undefined -fsanitize=address)
 
@@ -43,7 +42,9 @@ target_link_libraries(p101_fsm PRIVATE p101_c)
 set(STANDARD_FLAGS
         -D_POSIX_C_SOURCE=200809L
         -D_XOPEN_SOURCE=700
+        -D_GNU_SOURCE
         -D_DARWIN_C_SOURCE
+        -D__BSD_VISIBLE
         -Werror
 )
 
@@ -59,19 +60,19 @@ endfunction()
 get_filename_component(COMPILER_NAME "${CMAKE_C_COMPILER}" NAME)
 
 # Import warning_flags.txt
-file(STRINGS "../${COMPILER_NAME}_warning_flags.txt" WARNING_FLAGS_STRING)
+file(STRINGS "${CMAKE_SOURCE_DIR}/../${COMPILER_NAME}_warning_flags.txt" WARNING_FLAGS_STRING)
 split_string_into_list("${WARNING_FLAGS_STRING}" WARNING_FLAGS_LIST)
 
 # Import analyzer_flags.txt
-file(STRINGS "../${COMPILER_NAME}_analyzer_flags.txt" ANALYZER_FLAGS_STRING)
+file(STRINGS "${CMAKE_SOURCE_DIR}/../${COMPILER_NAME}_analyzer_flags.txt" ANALYZER_FLAGS_STRING)
 split_string_into_list("${WARNING_FLAGS_STRING}" ANALYZER_FLAGS_LIST)
 
 # Import debug_flags.txt
-file(STRINGS "../${COMPILER_NAME}_debug_flags.txt" DEBUG_FLAGSSTRING)
+file(STRINGS "${CMAKE_SOURCE_DIR}/../${COMPILER_NAME}_debug_flags.txt" DEBUG_FLAGSSTRING)
 split_string_into_list("${DEBUG_FLAGS_STRING}" DEBUG_FLAGS_LIST)
 
 # Import sanitizer_flags.txt
-file(STRINGS "../${COMPILER_NAME}_sanitizer_flags.txt" SANITIZER_FLAGS_STRING)
+file(STRINGS "${CMAKE_SOURCE_DIR}/../${COMPILER_NAME}_sanitizer_flags.txt" SANITIZER_FLAGS_STRING)
 split_string_into_list("${SANITIZER_FLAGS_STRING}" SANITIZER_FLAGS_LIST)
 
 # Set compiler flags for the target
@@ -86,16 +87,16 @@ target_compile_options(p101_fsm PRIVATE
 # Get compiler flags for the target
 get_target_property(COMPILE_OPTIONS p101_fsm COMPILE_OPTIONS)
 string(REPLACE ";" " " COMPILE_OPTIONS_STR "${COMPILE_OPTIONS}")
-message(STATUS "COMPILE_OPTIONS: ${COMPILE_OPTIONS_STR}")
 
 find_program(CLANG_FORMAT NAMES "clang-format" REQUIRED)
 find_program(CLANG_TIDY NAMES "clang-tidy" REQUIRED)
+find_program(CPPCHECK NAMES "cppcheck" REQUIRED)
 
 # Format source files using clang-format
 add_custom_target(format
         COMMAND ${CLANG_FORMAT} --style=file -i ${SOURCES} ${HEADER_LIST} ${HEADER_LIST_ARPA} ${HEADER_LIST_NET} ${HEADER_LIST_SYS}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Running clang-format on source files"
+        COMMENT "Running clang-format"
 )
 
 # Lint source files using clang-tidy
@@ -105,8 +106,39 @@ add_custom_target(lint
         COMMENT "Running clang-tidy"
 )
 
+# Add a custom target for clang --analyze
+add_custom_target(analysis
+        COMMAND ${CMAKE_C_COMPILER} -DP101_ANALYZE --analyzer-output=none --analyze -Xclang -analyzer-checker=core --analyze -Xclang -analyzer-checker=deadcode -Xclang -analyzer-checker=security -Xclang -analyzer-checker=unix -Xclang -analyzer-checker=unix ${CMAKE_C_FLAGS} ${COMMON_FLAGS} -I${CMAKE_SOURCE_DIR}/include -I/usr/local/include ${SOURCES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running clang --analyze"
+)
+
+# Add a custom target for cppcheck
+add_custom_target(cppcheck
+        COMMAND ${CPPCHECK} --error-exitcode=1 --quiet --library=posix --enable=all --suppress=missingIncludeSystem --suppress=unusedFunction -I${CMAKE_SOURCE_DIR}/include -I/usr/local/include ${SOURCES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Running cppcheck"
+)
+
+# Check if CMAKE_C_COMPILER starts with "clang"
+if (CMAKE_C_COMPILER MATCHES "^clang")
+    # Add dependencies including 'analysis' for Clang compiler
+    add_custom_target(strict
+            DEPENDS p101_fsm analysis lint cppcheck
+            COMMENT "Running code analysis tools"
+    )
+else()
+    # Add dependencies without 'analysis' for other compilers
+    add_custom_target(strict
+            DEPENDS p101_fsm lint cppcheck
+            COMMENT "Running code analysis tools"
+    )
+endif()
+
 add_dependencies(p101_fsm format)
-add_dependencies(p101_fsm lint)
+
+# Set the default target to be 'strict'
+add_custom_target(default_target DEPENDS strict)
 
 # Check if the system uses 64-bit libraries
 get_property(LIB64 GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS)
@@ -118,9 +150,6 @@ else()
     set(LIBSUFFIX "")
 endif()
 
-# Print the LIBSUFFIX variable for debugging
-message("LIBSUFFIX: ${LIBSUFFIX}")
-
 # Define the installation directory for libraries
 set(INSTALL_LIB_DIR lib${LIBSUFFIX} CACHE PATH "Installation directory for libraries")
 mark_as_advanced(INSTALL_LIB_DIR)
@@ -129,15 +158,7 @@ set_target_properties(p101_fsm PROPERTIES
         VERSION ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR})
 
-# Install the library target
-install(TARGETS p101_fsm
-        LIBRARY DESTINATION ${INSTALL_LIB_DIR}
-        COMPONENT library
-        NAMELINK_COMPONENT development
-)
-
 # Install header files
 install(FILES ${HEADER_LIST}
         DESTINATION include/p101_fsm
 )
-
