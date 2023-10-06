@@ -121,7 +121,7 @@ add_custom_target(cppcheck
 )
 
 # Check if CMAKE_C_COMPILER starts with "clang"
-if (CMAKE_C_COMPILER MATCHES "^clang")
+if (CMAKE_C_COMPILER MATCHES ".*/clang.*")
     # Add dependencies including 'analysis' for Clang compiler
     add_custom_target(strict
             DEPENDS p101_fsm analysis lint cppcheck
