@@ -27,9 +27,9 @@ struct p101_fsm_info
     size_t name_length;
     int    from_state_id;
     int    current_state_id;
-    void (*will_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id);
-    void (*did_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id, int next_id);
-    void (*bad_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id);
+    void   (*will_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id);
+    void   (*did_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id, int next_id);
+    void   (*bad_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id);
 };
 
 struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name)
@@ -48,7 +48,7 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
 
         if(p101_error_has_no_error(err))
         {
-            p101_strcpy(env, info->name, name);
+            p101_strncpy(env, info->name, name, info->name_length);
         }
         else
         {
