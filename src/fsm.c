@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 D'Arcy Smith.
+ * Copyright 2021-2023 D'Arcy Smith.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,27 @@
 
 #include "p101_fsm/fsm.h"
 #include <p101_c/p101_stdlib.h>
-#include <p101_c/p101_string.h>
+#include <p101_posix/p101_string.h>
 #include <stdio.h>
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, int from_id, int to_id, const struct p101_fsm_transition transitions[]);
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state from_id, p101_fsm_state to_id, const struct p101_fsm_transition transitions[]);
 
 struct p101_fsm_info
 {
-    char  *name;
-    size_t name_length;
-    int    from_state_id;
-    int    current_state_id;
-    void   (*will_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id);
-    void   (*did_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id, int next_id);
-    void   (*bad_change_state)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id);
+    const struct p101_env *sys_env;
+    struct p101_error     *sys_err;
+    char                  *name;
+    const struct p101_env *fsm_env;
+    struct p101_error     *fsm_err;
+    p101_fsm_state         from_state_id;
+    p101_fsm_state         current_state_id;
+    void                   (*will_change_state_notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id);
+    void                   (*did_change_state_notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id, p101_fsm_state next_id);
+    void                   (*bad_change_state_notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id);
+    p101_fsm_state         (*bad_change_state_handler)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id);
 };
 
-struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name)
+struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err)
 {
     struct p101_fsm_info *info;
 
@@ -43,14 +47,13 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     {
         info->from_state_id    = P101_FSM_INIT;
         info->current_state_id = P101_FSM_USER_START;
-        info->name_length      = p101_strlen(env, name) + 1;
-        info->name             = (char *)p101_malloc(env, err, info->name_length);
+        info->sys_env          = env;
+        info->sys_err          = err;
+        info->name             = p101_strdup(env, err, name);
+        info->fsm_env          = fsm_env;
+        info->fsm_err          = fsm_err;
 
-        if(p101_error_has_no_error(err))
-        {
-            p101_strncpy(env, info->name, name, info->name_length);
-        }
-        else
+        if(p101_error_has_error(err))
         {
             p101_free(env, info);
             info = NULL;
@@ -60,8 +63,9 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     return info;
 }
 
-const char *p101_fsm_info_get_name(const struct p101_fsm_info *info)
+const char *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info)
 {
+    P101_TRACE(env);
     return info->name;
 }
 
@@ -76,32 +80,60 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pi
     *pinfo = NULL;
 }
 
-void p101_fsm_info_set_will_change_state(struct p101_fsm_info *info,
-                                         void (*notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id))
+void p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, void (*notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id))
 {
-    info->will_change_state = notifier;
+    P101_TRACE(info->fsm_env);
+    info->will_change_state_notifier = notifier;
 }
 
-void p101_fsm_info_set_did_change_state(struct p101_fsm_info *info, void (*notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info,
-                                                                                     int from_state_id, int to_state_id, int next_id))
+void p101_fsm_info_set_did_change_state_notifier(struct p101_fsm_info *info,
+                                                 void                  (*notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id, p101_fsm_state next_id))
 {
-    info->did_change_state = notifier;
+    P101_TRACE(info->fsm_env);
+    info->did_change_state_notifier = notifier;
 }
 
-void p101_fsm_info_set_bad_change_state(struct p101_fsm_info *info,
-                                        void (*notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, int from_state_id, int to_state_id))
+void p101_fsm_info_set_bad_change_state_notifier(struct p101_fsm_info *info, void (*notifier)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id))
 {
-    info->bad_change_state = notifier;
+    P101_TRACE(info->fsm_env);
+    info->bad_change_state_notifier = notifier;
 }
 
-int p101_fsm_run(const struct p101_env *env, struct p101_error *err, struct p101_fsm_info *info, int *from_state_id, int *to_state_id, void *arg,
-                 const struct p101_fsm_transition transitions[])
+void p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101_fsm_state (*handler)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id))
 {
-    int from_id;
-    int to_id;
+    P101_TRACE(info->fsm_env);
 
-    P101_TRACE(env);
+    if(handler == NULL)
+    {
+        P101_ERROR_RAISE_SYSTEM(info->fsm_err, "handler cannot be NULL", 1);
+    }
+    else
+    {
+        info->bad_change_state_handler = handler;
+    }
+}
 
+p101_fsm_state p101_fsm_info_default_bad_change_state_handler(const struct p101_fsm_info *info, p101_fsm_state from_state_id, p101_fsm_state to_state_id)
+{
+    char  *error_message;
+    size_t error_message_size;
+
+    P101_TRACE(info->fsm_env);
+    error_message_size = (size_t)snprintf(NULL, 0, "Unknown state transition: %d -> %d ", from_state_id, to_state_id);
+    error_message      = (char *)p101_malloc(info->fsm_env, info->fsm_err, error_message_size);
+    sprintf(error_message, "Unknown state transition: %d -> %d ", from_state_id, to_state_id);    // NOLINT(cert-err33-c)
+    P101_ERROR_RAISE_USER(info->fsm_err, error_message, 1);
+    p101_free(info->fsm_env, error_message);
+
+    return P101_FSM_EXIT;
+}
+
+void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state *from_state_id, p101_fsm_state *to_state_id, void *arg, const struct p101_fsm_transition transitions[])
+{
+    p101_fsm_state from_id;
+    p101_fsm_state to_id;
+
+    P101_TRACE(info->fsm_env);
     from_id = info->from_state_id;
     to_id   = info->current_state_id;
 
@@ -111,80 +143,72 @@ int p101_fsm_run(const struct p101_env *env, struct p101_error *err, struct p101
         int                 next_id;
 
         // notify moving to
-        if(info->will_change_state)
+        if(info->will_change_state_notifier)
         {
-            info->will_change_state(env, err, info, from_id, to_id);
+            info->will_change_state_notifier(info->sys_env, info->sys_err, info, from_id, to_id);
         }
 
-        perform = fsm_transition(env, from_id, to_id, transitions);
+        if(from_state_id)
+        {
+            *from_state_id = from_id;
+        }
+
+        if(to_state_id)
+        {
+            *to_state_id = to_id;
+        }
+
+        perform = fsm_transition(info->fsm_env, from_id, to_id, transitions);
 
         if(perform == NULL)
         {
-            char  *error_message;
-            size_t error_message_size;
-
-            if(from_state_id)
-            {
-                *from_state_id = from_id;
-            }
-
-            if(to_state_id)
-            {
-                *to_state_id = to_id;
-            }
-
             // notify error
-            if(info->bad_change_state)
+            if(info->bad_change_state_notifier)
             {
-                info->bad_change_state(env, err, info, from_id, to_id);
+                info->bad_change_state_notifier(info->sys_env, info->sys_err, info, from_id, to_id);
             }
 
-            error_message_size = (size_t)snprintf(NULL, 0, "Unknown state transition: %d -> %d ", from_id, to_id);
-            error_message      = (char *)p101_malloc(env, err, error_message_size);
-            sprintf(error_message, "Unknown state transition: %d -> %d ", from_id, to_id);    // NOLINT(cert-err33-c)
-            P101_ERROR_RAISE_USER(err, error_message, 1);
-            p101_free(env, error_message);
-
-            return -1;
+            next_id = info->bad_change_state_handler(info->sys_env, info->sys_err, info, from_id, to_id);
         }
-
-        info->from_state_id    = from_id;
-        info->current_state_id = to_id;
-        from_id                = to_id;
-        next_id                = perform(env, err, arg);
-
-        // notify moving from
-        if(info->did_change_state)
+        else
         {
-            info->did_change_state(env, err, info, info->from_state_id, info->current_state_id, next_id);
+            info->from_state_id    = from_id;
+            info->current_state_id = to_id;
+            from_id                = to_id;
+            next_id                = perform(info->sys_env, info->sys_err, arg);
+
+            // notify moving from
+            if(info->did_change_state_notifier)
+            {
+                info->did_change_state_notifier(info->sys_env, info->sys_err, info, info->from_state_id, info->current_state_id, next_id);
+            }
         }
 
         to_id = next_id;
 
-        if(p101_error_has_error(err))
+        // internal FSM error
+        if(p101_error_has_error(info->fsm_err))
         {
-            // sometimes states do want to pass errors along... maybe?
-            // how do we sort out an internal error and an error from a state?
-            // we had an issue that we can't cope with
-            // break;
+            // if they are not exiting reset the error
+            if(to_id != P101_FSM_EXIT)
+            {
+                p101_error_reset(info->fsm_err);
+            }
+        }
+
+        // error in the provided transition functions
+        if(p101_error_has_error(info->sys_err))
+        {
+            // if they are not exiting reset the error
+            if(to_id != P101_FSM_EXIT)
+            {
+                p101_error_reset(info->sys_err);
+            }
         }
     } while(to_id != P101_FSM_EXIT);
-
-    // commenting this out will give us the last non-exit transition, probably more useful
-    if(from_state_id)
-    {
-        *from_state_id = from_id;
-    }
-
-    if(to_state_id)
-    {
-        *to_state_id = to_id;
-    }
-
-    return 0;
 }
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, int from_id, int to_id, const struct p101_fsm_transition transitions[])
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state from_id, p101_fsm_state to_id, const struct p101_fsm_transition transitions[])
 {
     const struct p101_fsm_transition *transition;
 

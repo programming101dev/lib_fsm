@@ -68,6 +68,7 @@ target_link_libraries(p101_fsm PRIVATE ${SANITIZER_FLAGS_STRING})
 target_link_libraries(p101_fsm PRIVATE p101_error)
 target_link_libraries(p101_fsm PRIVATE p101_env)
 target_link_libraries(p101_fsm PRIVATE p101_c)
+target_link_libraries(p101_fsm PRIVATE p101_posix)
 
 # Common compiler flags
 set(STANDARD_FLAGS
@@ -87,6 +88,18 @@ target_compile_options(p101_fsm PRIVATE
     ${DEBUG_FLAGS_LIST}
     ${SANITIZER_FLAGS_LIST}
 )
+
+if (NOT DEFINED CLANG_FORMAT_NAME)
+    set(CLANG_FORMAT_NAME "clang-format")
+endif()
+
+if (NOT DEFINED CLANG_TIDY_NAME)
+    set(CLANG_TIDY_NAME "clang-tidy")
+endif()
+
+if (NOT DEFINED CPPCHECK_NAME)
+    set(CPPCHECK_NAME "cppcheck")
+endif()
 
 find_program(CLANG_FORMAT NAMES ${CLANG_FORMAT_NAME} REQUIRED)
 find_program(CLANG_TIDY NAMES ${CLANG_TIDY_NAME} REQUIRED)
