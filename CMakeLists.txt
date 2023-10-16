@@ -168,6 +168,13 @@ set_target_properties(p101_fsm PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION ${PROJECT_VERSION_MAJOR})
 
+# Install the library target
+install(TARGETS p101_fsm
+    LIBRARY DESTINATION ${INSTALL_LIB_DIR}
+    COMPONENT library
+    NAMELINK_COMPONENT development
+)
+
 # Install header files
 install(FILES ${HEADER_LIST}
     DESTINATION include/p101_fsm
