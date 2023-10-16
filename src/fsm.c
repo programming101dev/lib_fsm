@@ -195,7 +195,7 @@ void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env
 void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id)
 {
     P101_TRACE(env);
-    printf("%s: will change state from %d to %d and going from %d to %d\n", info->name, from_state_id, to_state_id, to_state_id, next_state_id);
+    printf("%s: did change state from %d to %d and going from %d to %d\n", info->name, from_state_id, to_state_id, to_state_id, next_state_id);
 }
 
 #pragma GCC diagnostic pop
