@@ -257,26 +257,6 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
         }
 
         to_id = next_id;
-
-        // internal FSM error
-        if(p101_error_has_error(info->fsm_err))
-        {
-            // if they are not exiting reset the error
-            if(to_id != P101_FSM_EXIT)
-            {
-                p101_error_reset(info->fsm_err);
-            }
-        }
-
-        // error in the provided transition functions
-        if(p101_error_has_error(info->sys_err))
-        {
-            // if they are not exiting reset the error
-            if(to_id != P101_FSM_EXIT)
-            {
-                p101_error_reset(info->sys_err);
-            }
-        }
     } while(to_id != P101_FSM_EXIT);
 }
 
