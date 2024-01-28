@@ -19,7 +19,7 @@
 #include <p101_posix/p101_string.h>
 #include <stdio.h>
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[]);
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_size);
 
 struct p101_fsm_info
 {
@@ -200,7 +200,7 @@ void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env,
 
 #pragma GCC diagnostic pop
 
-void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[])
+void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transitions_size)
 {
     p101_fsm_state_t from_id;
     p101_fsm_state_t to_id;
@@ -230,7 +230,7 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
             *to_state_id = to_id;
         }
 
-        perform = fsm_transition(info->fsm_env, from_id, to_id, transitions);
+        perform = fsm_transition(info->fsm_env, from_id, to_id, transitions, transitions_size);
 
         if(perform == NULL)
         {
@@ -260,22 +260,24 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
     } while(to_id != P101_FSM_EXIT);
 }
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[])
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_size)
 {
-    const struct p101_fsm_transition *transition;
+    p101_fsm_state_func transition_func;
 
     P101_TRACE(env);
-    transition = &transitions[0];
+    transition_func = NULL;
 
-    while(transition->from_id != P101_FSM_IGNORE)
+    for(size_t i = 0; i < transitions_size; i++)
     {
-        if(transition->from_id == from_id && transition->to_id == to_id)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
+        if(transitions[i].from_id == from_id && transitions[i].to_id == to_id)
         {
-            return transition->perform;
+            transition_func = transitions[i].perform;
+            break;
         }
-
-        transition = transitions++;
+#pragma clang diagnostic pop
     }
 
-    return NULL;
+    return transition_func;
 }

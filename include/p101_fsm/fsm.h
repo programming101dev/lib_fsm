@@ -49,140 +49,22 @@ extern "C"
         p101_fsm_state_func perform;
     };
 
-    /**
-     *
-     * @param env
-     * @param err
-     * @param name
-     * @param fsm_env
-     * @param fsm_err
-     * @return
-     */
-    struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err, p101_fsm_info_bad_change_state_handler_func handler);
-
-    /**
-     *
-     * @param env
-     * @param pinfo
-     */
-    void p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pinfo);
-
-    /**
-     *
-     * @param info
-     * @return
-     */
-    const char *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info);
-
-    /**
-     *
-     * @param info
-     * @param notifier
-     */
-    void p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier);
-
-    /**
-     *
-     * @param info
-     * @param notifier
-     */
-    void p101_fsm_info_set_did_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier);
-    /**
-     *
-     * @param info
-     * @param notifier
-     */
-    void p101_fsm_info_set_bad_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier);
-
-    /**
-     *
-     * @param env
-     * @param info
-     * @param handler
-     */
-    void p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler);
-
-    /**
-     *
-     * @param info
-     * @param notifier
-     */
+    struct p101_fsm_info                         *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err, p101_fsm_info_bad_change_state_handler_func handler);
+    void                                          p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pinfo);
+    const char                                   *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info);
+    void                                          p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier);
+    void                                          p101_fsm_info_set_did_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier);
+    void                                          p101_fsm_info_set_bad_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier);
+    void                                          p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler);
     p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_state_notifier(const struct p101_fsm_info *info);
-
-    /**
-     *
-     * @param info
-     * @param notifier
-     */
-    p101_fsm_info_did_change_state_notifier_func p101_fsm_info_get_did_change_state_notifier(const struct p101_fsm_info *info);
-    /**
-     *
-     * @param info
-     * @param notifier
-     */
-    p101_fsm_info_bad_change_state_notifier_func p101_fsm_info_get_bad_change_state_notifier(const struct p101_fsm_info *info);
-
-    /**
-     *
-     * @param env
-     * @param info
-     * @param handler
-     */
-    p101_fsm_info_bad_change_state_handler_func p101_fsm_info_get_bad_change_state_handler(const struct p101_fsm_info *info);
-
-    /**
-     *
-     * @param env
-     * @param err
-     * @param info
-     * @param from_state_id
-     * @param to_state_id
-     * @return
-     */
-    p101_fsm_state_t p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-
-    /**
-     *
-     * @param env
-     * @param err
-     * @param info
-     * @param from_state_id
-     * @param to_state_id
-     */
-    void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-
-    /**
-     *
-     * @param env
-     * @param err
-     * @param info
-     * @param from_state_id
-     * @param to_state_id
-     */
-    void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-
-    /**
-     *
-     * @param env
-     * @param err
-     * @param info
-     * @param from_state_id
-     * @param to_state_id
-     * @param next_state_id
-     */
+    p101_fsm_info_did_change_state_notifier_func  p101_fsm_info_get_did_change_state_notifier(const struct p101_fsm_info *info);
+    p101_fsm_info_bad_change_state_notifier_func  p101_fsm_info_get_bad_change_state_notifier(const struct p101_fsm_info *info);
+    p101_fsm_info_bad_change_state_handler_func   p101_fsm_info_get_bad_change_state_handler(const struct p101_fsm_info *info);
+    p101_fsm_state_t                              p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
+    void                                          p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
+    void                                          p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
     void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id);
-
-    /**
-     *
-     * @param env
-     * @param err
-     * @param info
-     * @param from_state_id
-     * @param to_state_id
-     * @param arg
-     * @param transitions
-     */
-    void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[]);
+    void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transitions_size);
 
 #ifdef __cplusplus
 }
