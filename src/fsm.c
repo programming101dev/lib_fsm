@@ -269,14 +269,18 @@ static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_s
 
     for(size_t i = 0; i < transitions_size; i++)
     {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
+#ifdef __clang__
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wunsafe-buffer-usage"
+#endif
         if(transitions[i].from_id == from_id && transitions[i].to_id == to_id)
         {
             transition_func = transitions[i].perform;
             break;
         }
-#pragma clang diagnostic pop
+#ifdef __clang__
+    #pragma clang diagnostic pop
+#endif
     }
 
     return transition_func;
