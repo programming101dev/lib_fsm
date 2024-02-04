@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.21)
 project(p101_fsm
     VERSION 0.0.1
     DESCRIPTION ""
