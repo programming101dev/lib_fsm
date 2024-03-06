@@ -269,14 +269,14 @@ static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_s
 
     for(size_t i = 0; i < transitions_size; i++)
     {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunsafe-buffer-usage"
+//#pragma GCC diagnostic push
+//#pragma GCC diagnostic ignored "-Wunsafe-buffer-usage"
         if(transitions[i].from_id == from_id && transitions[i].to_id == to_id)
         {
             transition_func = transitions[i].perform;
             break;
         }
-#pragma GCC diagnostic pop
+//#pragma GCC diagnostic pop
     }
 
     return transition_func;
