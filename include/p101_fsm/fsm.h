@@ -44,8 +44,11 @@ extern "C"
 
     struct p101_fsm_transition
     {
-        p101_fsm_state_t    from_id;
-        p101_fsm_state_t    to_id;
+        // cppcheck-suppress unusedStructMember
+        p101_fsm_state_t from_id;
+        // cppcheck-suppress unusedStructMember
+        p101_fsm_state_t to_id;
+        // cppcheck-suppress unusedStructMember
         p101_fsm_state_func perform;
     };
 
