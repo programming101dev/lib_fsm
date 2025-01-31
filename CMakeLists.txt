@@ -221,7 +221,8 @@ if (CMAKE_C_COMPILER MATCHES ".*/clang.*")
     add_custom_command(
         TARGET analysis POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_SOURCE_DIR}/include/p101_fsm/*.gch
-        COMMENT "Removing .gch files"
+        COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_SOURCE_DIR}/include/p101_fsm/*.pch
+        COMMENT "Removing .gch/.pch files"
     )
 
     # Add dependencies including 'analysis' for Clang compiler
