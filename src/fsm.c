@@ -19,7 +19,7 @@
 #include <p101_posix/p101_string.h>
 #include <stdio.h>
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_size);
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_nbytes);
 
 struct p101_fsm_info
 {
@@ -158,7 +158,7 @@ p101_fsm_state_t p101_fsm_info_default_bad_change_state_handler(const struct p10
     size_t error_message_size;
 
     P101_TRACE(env);
-    error_message_size = (size_t)snprintf(NULL, 0, "Unknown state transition: %d -> %d ", from_state_id, to_state_id);
+    error_message_size = (size_t)snprintf(NULL, 0, "Unknown state transition: %d -> %d ", from_state_id, to_state_id) + 1;
     error_message      = (char *)p101_malloc(env, err, error_message_size);
     sprintf(error_message, "Unknown state transition: %d -> %d ", from_state_id, to_state_id);    // NOLINT(cert-err33-c)
     P101_ERROR_RAISE_USER(info->fsm_err, error_message, 1);
@@ -260,24 +260,34 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
     } while(to_id != P101_FSM_EXIT);
 }
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_size)
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_nbytes)
 {
-    p101_fsm_state_func transition_func;
+    size_t elem_size;
+    size_t n;
 
     P101_TRACE(env);
-    transition_func = NULL;
 
-    for(size_t i = 0; i < transitions_size; i++)
+    if(transitions == NULL)
     {
-        // #pragma GCC diagnostic push
-        // #pragma GCC diagnostic ignored "-Wunsafe-buffer-usage"
-        if(transitions[i].from_id == from_id && transitions[i].to_id == to_id)
-        {
-            transition_func = transitions[i].perform;
-            break;
-        }
-        // #pragma GCC diagnostic pop
+        return NULL;
     }
 
-    return transition_func;
+    elem_size = sizeof transitions[0];
+
+    /* Caller must pass a whole-number multiple of the element size. */
+    if((transitions_nbytes % elem_size) != 0)
+    {
+        return NULL;
+    }
+
+    n = transitions_nbytes / elem_size;
+
+    for(size_t i = 0; i < n; ++i)
+    {
+        if(transitions[i].from_id == from_id && transitions[i].to_id == to_id)
+        {
+            return transitions[i].perform;
+        }
+    }
+    return NULL;
 }
