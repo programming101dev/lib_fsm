@@ -206,6 +206,7 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
     p101_fsm_state_t to_id;
 
     P101_TRACE(info->fsm_env);
+
     from_id = info->from_state_id;
     to_id   = info->current_state_id;
 
@@ -291,3 +292,15 @@ static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_s
     }
     return NULL;
 }
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+
+p101_fsm_state_t p101_fsm_exit_immediately(const struct p101_env *env, struct p101_error *err, void *arg)
+{
+    P101_TRACE(env);
+
+    return P101_FSM_EXIT;
+}
+
+#pragma GCC diagnostic pop
