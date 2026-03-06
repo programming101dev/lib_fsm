@@ -21,6 +21,11 @@
 
 static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_nbytes);
 
+enum
+{
+    P101_FSM_ERROR_MESSAGE_SIZE = 64
+};
+
 struct p101_fsm_info
 {
     const struct p101_env                        *sys_env;
@@ -45,6 +50,13 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
 
     if(p101_error_has_no_error(err))
     {
+        if(name == NULL)
+        {
+            P101_ERROR_RAISE_SYSTEM(err, "name cannot be NULL", 1);
+            p101_free(env, info);
+            return NULL;
+        }
+
         info->name = p101_strdup(env, err, name);
 
         if(p101_error_has_error(err))
@@ -58,8 +70,24 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
             info->current_state_id = P101_FSM_USER_START;
             info->sys_env          = env;
             info->sys_err          = err;
-            info->fsm_env          = fsm_env;
-            info->fsm_err          = fsm_err;
+
+            if(fsm_env == NULL)
+            {
+                info->fsm_env = env;
+            }
+            else
+            {
+                info->fsm_env = fsm_env;
+            }
+
+            if(fsm_err == NULL)
+            {
+                info->fsm_err = err;
+            }
+            else
+            {
+                info->fsm_err = fsm_err;
+            }
 
             if(handler == NULL)
             {
@@ -78,6 +106,12 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
 const char *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info)
 {
     P101_TRACE(env);
+
+    if(info == NULL)
+    {
+        return NULL;
+    }
+
     return info->name;
 }
 
@@ -86,7 +120,19 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pi
     struct p101_fsm_info *info;
 
     P101_TRACE(env);
+
+    if(pinfo == NULL)
+    {
+        return;
+    }
+
     info = *pinfo;
+
+    if(info == NULL)
+    {
+        return;
+    }
+
     p101_free(env, info->name);
     p101_free(env, info);
     *pinfo = NULL;
@@ -94,24 +140,44 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pi
 
 void p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier)
 {
+    if(info == NULL)
+    {
+        return;
+    }
+
     P101_TRACE(info->fsm_env);
     info->will_change_state_notifier = notifier;
 }
 
 void p101_fsm_info_set_did_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier)
 {
+    if(info == NULL)
+    {
+        return;
+    }
+
     P101_TRACE(info->fsm_env);
     info->did_change_state_notifier = notifier;
 }
 
 void p101_fsm_info_set_bad_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier)
 {
+    if(info == NULL)
+    {
+        return;
+    }
+
     P101_TRACE(info->fsm_env);
     info->bad_change_state_notifier = notifier;
 }
 
 void p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler)
 {
+    if(info == NULL)
+    {
+        return;
+    }
+
     P101_TRACE(info->fsm_env);
 
     if(handler == NULL)
@@ -126,6 +192,11 @@ void p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101
 
 p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_state_notifier(const struct p101_fsm_info *info)
 {
+    if(info == NULL)
+    {
+        return NULL;
+    }
+
     P101_TRACE(info->fsm_env);
 
     return info->will_change_state_notifier;
@@ -133,6 +204,11 @@ p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_stat
 
 p101_fsm_info_did_change_state_notifier_func p101_fsm_info_get_did_change_state_notifier(const struct p101_fsm_info *info)
 {
+    if(info == NULL)
+    {
+        return NULL;
+    }
+
     P101_TRACE(info->fsm_env);
 
     return info->did_change_state_notifier;
@@ -140,6 +216,11 @@ p101_fsm_info_did_change_state_notifier_func p101_fsm_info_get_did_change_state_
 
 p101_fsm_info_bad_change_state_notifier_func p101_fsm_info_get_bad_change_state_notifier(const struct p101_fsm_info *info)
 {
+    if(info == NULL)
+    {
+        return NULL;
+    }
+
     P101_TRACE(info->fsm_env);
 
     return info->bad_change_state_notifier;
@@ -147,6 +228,11 @@ p101_fsm_info_bad_change_state_notifier_func p101_fsm_info_get_bad_change_state_
 
 p101_fsm_info_bad_change_state_handler_func p101_fsm_info_get_bad_change_state_handler(const struct p101_fsm_info *info)
 {
+    if(info == NULL)
+    {
+        return NULL;
+    }
+
     P101_TRACE(info->fsm_env);
 
     return info->bad_change_state_handler;
@@ -154,15 +240,33 @@ p101_fsm_info_bad_change_state_handler_func p101_fsm_info_get_bad_change_state_h
 
 p101_fsm_state_t p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
 {
-    char  *error_message;
-    size_t error_message_size;
+    char               error_message[P101_FSM_ERROR_MESSAGE_SIZE];
+    struct p101_error *target_err;
 
     P101_TRACE(env);
-    error_message_size = (size_t)snprintf(NULL, 0, "Unknown state transition: %d -> %d ", from_state_id, to_state_id) + 1;
-    error_message      = (char *)p101_malloc(env, err, error_message_size);
-    sprintf(error_message, "Unknown state transition: %d -> %d ", from_state_id, to_state_id);    // NOLINT(cert-err33-c)
-    P101_ERROR_RAISE_USER(info->fsm_err, error_message, 1);
-    p101_free(env, error_message);
+
+    (void)snprintf(error_message, sizeof(error_message), "Unknown state transition: %d -> %d", from_state_id, to_state_id);
+
+    if(err == NULL)
+    {
+        if(info == NULL)
+        {
+            target_err = NULL;
+        }
+        else
+        {
+            target_err = info->fsm_err;
+        }
+    }
+    else
+    {
+        target_err = err;
+    }
+
+    if(target_err != NULL)
+    {
+        P101_ERROR_RAISE_USER(target_err, error_message, 1);
+    }
 
     return P101_FSM_EXIT;
 }
@@ -200,10 +304,15 @@ void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env,
 
 #pragma GCC diagnostic pop
 
-void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transitions_size)
+void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transitions_nbytes)
 {
     p101_fsm_state_t from_id;
     p101_fsm_state_t to_id;
+
+    if(info == NULL)
+    {
+        return;
+    }
 
     P101_TRACE(info->fsm_env);
 
@@ -231,7 +340,7 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
             *to_state_id = to_id;
         }
 
-        perform = fsm_transition(info->fsm_env, from_id, to_id, transitions, transitions_size);
+        perform = fsm_transition(info->fsm_env, from_id, to_id, transitions, transitions_nbytes);
 
         if(perform == NULL)
         {
@@ -241,7 +350,20 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
                 info->bad_change_state_notifier(info->sys_env, info->sys_err, info, from_id, to_id);
             }
 
-            next_id = info->bad_change_state_handler(info->fsm_env, info->fsm_err, info, from_id, to_id);
+            if(info->bad_change_state_handler)
+            {
+                next_id = info->bad_change_state_handler(info->fsm_env, info->fsm_err, info, from_id, to_id);
+            }
+            else
+            {
+                next_id = P101_FSM_EXIT;
+            }
+
+            if(next_id == to_id)
+            {
+                P101_ERROR_RAISE_USER(info->fsm_err, "bad change state handler returned same state", 1);
+                next_id = P101_FSM_EXIT;
+            }
         }
         else
         {
