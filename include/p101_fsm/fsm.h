@@ -28,6 +28,11 @@ extern "C"
 
     typedef enum
     {
+        /*
+         * Stop the current run without treating the value as a real target
+         * state. Useful when a state callback or bad-transition handler wants
+         * to ignore the requested transition without raising an error.
+         */
         P101_FSM_IGNORE = -1,    // -1
         P101_FSM_INIT,           // 0
         P101_FSM_EXIT,           // 1
@@ -52,6 +57,12 @@ extern "C"
         p101_fsm_state_func perform;
     };
 
+    /*
+     * env/err are passed to user state callbacks. fsm_env/fsm_err are used by
+     * FSM-owned callbacks such as transition notifiers and bad-transition
+     * handlers, and by FSM creation/internal allocation. Passing NULL for
+     * fsm_env/fsm_err falls back to env/err.
+     */
     struct p101_fsm_info                         *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err, p101_fsm_info_bad_change_state_handler_func handler);
     void                                          p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pinfo);
     const char                                   *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info);
@@ -66,8 +77,8 @@ extern "C"
     p101_fsm_state_t                              p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
     void                                          p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
     void                                          p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-    void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id);
-    void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transitions_nbytes);
+    void             p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id);
+    void             p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transitions_nbytes);
     p101_fsm_state_t p101_fsm_exit_immediately(const struct p101_env *env, struct p101_error *err, void *arg);
 
 #ifdef __cplusplus
