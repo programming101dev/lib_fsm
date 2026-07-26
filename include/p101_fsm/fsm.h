@@ -19,6 +19,22 @@
 
 #include <p101_env/env.h>
 
+#ifndef P101_ATTR_MALLOC
+    #if defined(__GNUC__) || defined(__clang__)
+        #define P101_ATTR_MALLOC __attribute__((malloc))
+    #else
+        #define P101_ATTR_MALLOC
+    #endif
+#endif
+
+#ifndef P101_ATTR_WARN_UNUSED_RESULT
+    #if defined(__GNUC__) || defined(__clang__)
+        #define P101_ATTR_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
+    #else
+        #define P101_ATTR_WARN_UNUSED_RESULT
+    #endif
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {
@@ -63,7 +79,8 @@ extern "C"
      * handlers, and by FSM creation/internal allocation. Passing NULL for
      * fsm_env/fsm_err falls back to env/err.
      */
-    struct p101_fsm_info                         *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err, p101_fsm_info_bad_change_state_handler_func handler);
+    struct p101_fsm_info                         *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err,
+                                                                       p101_fsm_info_bad_change_state_handler_func handler) P101_ATTR_MALLOC P101_ATTR_WARN_UNUSED_RESULT;
     void                                          p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pinfo);
     const char                                   *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info);
     void                                          p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier);
