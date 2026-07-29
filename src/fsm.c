@@ -15,18 +15,16 @@
  */
 
 #include "p101_fsm/fsm.h"
+#include "p101_fsm/errors.h"
+#include <p101_c/p101_stdio.h>
 #include <p101_c/p101_stdlib.h>
 #include <p101_posix/p101_string.h>
-#include <stdio.h>
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_nbytes);
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transition_count);
 static int                 fsm_info_has_error(const struct p101_fsm_info *info);
 static const char         *fsm_info_name_or_default(const struct p101_fsm_info *info);
-
-enum
-{
-    P101_FSM_ERROR_MESSAGE_SIZE = 64
-};
+static int                 fsm_validate_transitions(struct p101_fsm_info *info, const struct p101_fsm_transition transitions[], size_t transition_count);
+static void                fsm_write_states(p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, p101_fsm_state_t from_id, p101_fsm_state_t to_id);
 
 struct p101_fsm_info
 {
@@ -41,13 +39,14 @@ struct p101_fsm_info
     p101_fsm_info_did_change_state_notifier_func  did_change_state_notifier;
     p101_fsm_info_bad_change_state_notifier_func  bad_change_state_notifier;
     p101_fsm_info_bad_change_state_handler_func   bad_change_state_handler;
+    bool                                          running;
 };
 
 struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err, p101_fsm_info_bad_change_state_handler_func handler)
 {
     const struct p101_env *target_env;
     struct p101_error     *target_err;
-    struct p101_fsm_info  *info;
+    struct p101_fsm_info  *info = NULL;
 
     P101_TRACE(env);
     target_env = fsm_env == NULL ? env : fsm_env;
@@ -55,20 +54,20 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
 
     if(p101_error_has_error(err) || p101_error_has_error(target_err))
     {
-        return NULL;
+        goto done;
     }
 
     if(name == NULL)
     {
-        P101_ERROR_RAISE_SYSTEM(target_err, "name cannot be NULL", 1);
-        return NULL;
+        P101_ERROR_RAISE_USER(target_err, "FSM name cannot be NULL", P101_FSM_ERROR_INVALID_ARGUMENT);
+        goto done;
     }
 
     info = (struct p101_fsm_info *)p101_calloc(target_env, target_err, 1, sizeof(struct p101_fsm_info));
 
     if(info == NULL)
     {
-        return NULL;
+        goto done;
     }
 
     info->name = p101_strdup(target_env, target_err, name);
@@ -77,8 +76,8 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     {
         p101_free(target_env, info->name);
         p101_free(target_env, info);
-
-        return NULL;
+        info = NULL;
+        goto done;
     }
 
     info->from_state_id    = P101_FSM_INIT;
@@ -98,6 +97,8 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
         info->bad_change_state_handler = handler;
     }
 
+done:
+    P101_TRACE_EXIT(env);
     return info;
 }
 
@@ -107,9 +108,11 @@ const char *p101_fsm_info_get_name(const struct p101_env *env, const struct p101
 
     if(info == NULL)
     {
+        P101_TRACE_EXIT(env);
         return NULL;
     }
 
+    P101_TRACE_EXIT(env);
     return info->name;
 }
 
@@ -122,14 +125,14 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pi
 
     if(pinfo == NULL)
     {
-        return;
+        goto done;
     }
 
     info = *pinfo;
 
     if(info == NULL)
     {
-        return;
+        goto done;
     }
 
     free_env = info->fsm_env == NULL ? env : info->fsm_env;
@@ -137,116 +140,141 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_fsm_info **pi
     p101_free(free_env, info->name);
     p101_free(free_env, info);
     *pinfo = NULL;
+
+done:
+    P101_TRACE_EXIT(env);
 }
 
 void p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
     info->will_change_state_notifier = notifier;
+    P101_TRACE_EXIT(env);
 }
 
 void p101_fsm_info_set_did_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
     info->did_change_state_notifier = notifier;
+    P101_TRACE_EXIT(env);
 }
 
 void p101_fsm_info_set_bad_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
     info->bad_change_state_notifier = notifier;
+    P101_TRACE_EXIT(env);
 }
 
 void p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
 
-    if(handler == NULL)
-    {
-        P101_ERROR_RAISE_SYSTEM(info->fsm_err, "handler cannot be NULL", 1);
-    }
-    else
-    {
-        info->bad_change_state_handler = handler;
-    }
+    info->bad_change_state_handler = handler == NULL ? p101_fsm_info_default_bad_change_state_handler : handler;
+    P101_TRACE_EXIT(env);
 }
 
 p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_state_notifier(const struct p101_fsm_info *info)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return NULL;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
 
+    P101_TRACE_EXIT(env);
     return info->will_change_state_notifier;
 }
 
 p101_fsm_info_did_change_state_notifier_func p101_fsm_info_get_did_change_state_notifier(const struct p101_fsm_info *info)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return NULL;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
 
+    P101_TRACE_EXIT(env);
     return info->did_change_state_notifier;
 }
 
 p101_fsm_info_bad_change_state_notifier_func p101_fsm_info_get_bad_change_state_notifier(const struct p101_fsm_info *info)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return NULL;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
 
+    P101_TRACE_EXIT(env);
     return info->bad_change_state_notifier;
 }
 
 p101_fsm_info_bad_change_state_handler_func p101_fsm_info_get_bad_change_state_handler(const struct p101_fsm_info *info)
 {
+    const struct p101_env *env;
+
     if(info == NULL)
     {
         return NULL;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    P101_TRACE(env);
 
+    P101_TRACE_EXIT(env);
     return info->bad_change_state_handler;
 }
 
 p101_fsm_state_t p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
 {
-    char               error_message[P101_FSM_ERROR_MESSAGE_SIZE];
     struct p101_error *target_err;
 
     P101_TRACE(env);
-
-    (void)snprintf(error_message, sizeof(error_message), "Unknown state transition: %d -> %d", from_state_id, to_state_id);
 
     if(err == NULL)
     {
@@ -266,71 +294,92 @@ p101_fsm_state_t p101_fsm_info_default_bad_change_state_handler(const struct p10
 
     if(target_err != NULL)
     {
-        P101_ERROR_RAISE_USER(target_err, error_message, 1);
+        P101_ERROR_RAISE_USER_PRINTF(target_err, P101_FSM_ERROR_UNKNOWN_TRANSITION, "Unknown FSM state transition: %d -> %d", from_state_id, to_state_id);
     }
 
+    P101_TRACE_EXIT(env);
     return P101_FSM_EXIT;
 }
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 
 void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
 {
     P101_TRACE(env);
-    printf("%s: bad change state from %d to %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id);
+    (void)p101_printf(env, err, "%s: bad change state from %d to %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id);
+    P101_TRACE_EXIT(env);
 }
-
-#pragma GCC diagnostic pop
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 
 void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
 {
     P101_TRACE(env);
-    printf("%s: will change state from %d and %d to <not determined yet>\n", fsm_info_name_or_default(info), from_state_id, to_state_id);
+    (void)p101_printf(env, err, "%s: will attempt state transition %d -> %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id);
+    P101_TRACE_EXIT(env);
 }
-
-#pragma GCC diagnostic pop
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 
 void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id)
 {
     P101_TRACE(env);
-    printf("%s: did change state from %d to %d and going from %d to %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id, to_state_id, next_state_id);
+    (void)p101_printf(env, err, "%s: completed state transition %d -> %d; next state %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id, next_state_id);
+    P101_TRACE_EXIT(env);
 }
 
-#pragma GCC diagnostic pop
-
-void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transitions_nbytes)
+p101_fsm_run_result p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, void *arg, const struct p101_fsm_transition transitions[], size_t transition_count)
 {
-    p101_fsm_state_t from_id;
-    p101_fsm_state_t to_id;
+    p101_fsm_state_t       from_id;
+    p101_fsm_state_t       to_id;
+    p101_fsm_run_result    result;
+    size_t                 redirects;
+    bool                   started;
+    const struct p101_env *env;
+    struct p101_error     *err;
 
     if(info == NULL)
     {
-        return;
+        return P101_FSM_RUN_ERROR;
     }
 
-    P101_TRACE(info->fsm_env);
+    env = info->fsm_env;
+    err = info->fsm_err;
+    P101_TRACE(env);
+    result    = P101_FSM_RUN_ERROR;
+    redirects = 0;
+    started   = false;
 
     if(fsm_info_has_error(info))
     {
-        return;
+        goto done;
+    }
+
+    if(info->running)
+    {
+        P101_ERROR_RAISE_USER(err, "Cannot run an FSM recursively", P101_FSM_ERROR_REENTRANT_RUN);
+        goto done;
     }
 
     from_id = info->from_state_id;
     to_id   = info->current_state_id;
+
+    if(to_id == P101_FSM_EXIT)
+    {
+        fsm_write_states(from_state_id, to_state_id, from_id, to_id);
+        result = P101_FSM_RUN_EXITED;
+        goto done;
+    }
+
+    if(!fsm_validate_transitions(info, transitions, transition_count))
+    {
+        goto done;
+    }
+
+    info->running = true;
+    started       = true;
 
     do
     {
         p101_fsm_state_func perform;
         p101_fsm_state_t    next_id;
 
-        // notify moving to
+        fsm_write_states(from_state_id, to_state_id, from_id, to_id);
+
         if(info->will_change_state_notifier)
         {
             info->will_change_state_notifier(info->fsm_env, info->fsm_err, info, from_id, to_id);
@@ -338,24 +387,13 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
 
         if(fsm_info_has_error(info))
         {
-            break;
+            goto done;
         }
 
-        if(from_state_id)
-        {
-            *from_state_id = from_id;
-        }
-
-        if(to_state_id)
-        {
-            *to_state_id = to_id;
-        }
-
-        perform = fsm_transition(info->fsm_env, from_id, to_id, transitions, transitions_nbytes);
+        perform = fsm_transition(info->fsm_env, from_id, to_id, transitions, transition_count);
 
         if(perform == NULL)
         {
-            // notify error
             if(info->bad_change_state_notifier)
             {
                 info->bad_change_state_notifier(info->fsm_env, info->fsm_err, info, from_id, to_id);
@@ -363,27 +401,48 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
 
             if(fsm_info_has_error(info))
             {
-                break;
+                goto done;
             }
 
-            if(info->bad_change_state_handler)
+            next_id = info->bad_change_state_handler(info->fsm_env, info->fsm_err, info, from_id, to_id);
+
+            if(fsm_info_has_error(info))
             {
-                next_id = info->bad_change_state_handler(info->fsm_env, info->fsm_err, info, from_id, to_id);
-            }
-            else
-            {
-                next_id = P101_FSM_EXIT;
+                goto done;
             }
 
-            if(fsm_info_has_error(info) || next_id == P101_FSM_IGNORE)
+            if(next_id == P101_FSM_IGNORE)
             {
-                break;
+                result = P101_FSM_RUN_PAUSED;
+                goto done;
             }
 
             if(next_id == to_id)
             {
-                P101_ERROR_RAISE_USER(info->fsm_err, "bad change state handler returned same state", 1);
-                next_id = P101_FSM_EXIT;
+                P101_ERROR_RAISE_USER(err, "Bad-transition handler returned the rejected state", P101_FSM_ERROR_HANDLER_LOOP);
+                goto done;
+            }
+
+            if(next_id == P101_FSM_EXIT)
+            {
+                info->from_state_id    = from_id;
+                info->current_state_id = P101_FSM_EXIT;
+                fsm_write_states(from_state_id, to_state_id, from_id, P101_FSM_EXIT);
+                result = P101_FSM_RUN_EXITED;
+                goto done;
+            }
+
+            if(next_id < P101_FSM_USER_START)
+            {
+                P101_ERROR_RAISE_USER(err, "Bad-transition handler returned an invalid state", P101_FSM_ERROR_INVALID_ARGUMENT);
+                goto done;
+            }
+
+            redirects++;
+            if(redirects > transition_count)
+            {
+                P101_ERROR_RAISE_USER(err, "Bad-transition handler entered a redirect cycle", P101_FSM_ERROR_HANDLER_LOOP);
+                goto done;
             }
         }
         else
@@ -395,10 +454,19 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
 
             if(fsm_info_has_error(info) || next_id == P101_FSM_IGNORE)
             {
-                break;
+                if(!fsm_info_has_error(info))
+                {
+                    result = P101_FSM_RUN_PAUSED;
+                }
+                goto done;
             }
 
-            // notify moving from
+            if(next_id != P101_FSM_EXIT && next_id < P101_FSM_USER_START)
+            {
+                P101_ERROR_RAISE_USER(info->sys_err, "FSM state callback returned an invalid state", P101_FSM_ERROR_INVALID_ARGUMENT);
+                goto done;
+            }
+
             if(info->did_change_state_notifier)
             {
                 info->did_change_state_notifier(info->fsm_env, info->fsm_err, info, info->from_state_id, info->current_state_id, next_id);
@@ -406,22 +474,46 @@ void p101_fsm_run(struct p101_fsm_info *info, p101_fsm_state_t *from_state_id, p
 
             if(fsm_info_has_error(info))
             {
-                break;
+                goto done;
+            }
+
+            redirects = 0;
+
+            if(next_id == P101_FSM_EXIT)
+            {
+                info->from_state_id    = info->current_state_id;
+                info->current_state_id = P101_FSM_EXIT;
+                fsm_write_states(from_state_id, to_state_id, info->from_state_id, info->current_state_id);
+                result = P101_FSM_RUN_EXITED;
+                goto done;
             }
         }
 
         to_id = next_id;
     } while(to_id != P101_FSM_EXIT);
+
+done:
+    if(started)
+    {
+        info->running = false;
+    }
+    P101_TRACE_EXIT(env);
+    return result;
 }
 
 static int fsm_info_has_error(const struct p101_fsm_info *info)
 {
+    const struct p101_error *app_err;
+    const struct p101_error *fsm_err;
+
     if(info == NULL)
     {
         return 0;
     }
 
-    return p101_error_has_error(info->sys_err) || p101_error_has_error(info->fsm_err);
+    app_err = info->sys_err;
+    fsm_err = info->fsm_err;
+    return p101_error_has_error(app_err) || p101_error_has_error(fsm_err);
 }
 
 static const char *fsm_info_name_or_default(const struct p101_fsm_info *info)
@@ -434,46 +526,86 @@ static const char *fsm_info_name_or_default(const struct p101_fsm_info *info)
     return info->name;
 }
 
-static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transitions_nbytes)
+static int fsm_validate_transitions(struct p101_fsm_info *info, const struct p101_fsm_transition transitions[], size_t transition_count)
 {
-    size_t elem_size;
-    size_t n;
+    const struct p101_env *env;
+    struct p101_error     *err;
+    int                    valid;
+
+    env = info->fsm_env;
+    err = info->fsm_err;
+    P101_TRACE(env);
+    valid = 0;
+
+    if(transitions == NULL || transition_count == 0)
+    {
+        P101_ERROR_RAISE_USER(err, "FSM transition table cannot be empty", P101_FSM_ERROR_INVALID_TRANSITION_TABLE);
+        goto done;
+    }
+
+    for(size_t i = 0; i < transition_count; ++i)
+    {
+        if((transitions[i].from_id != P101_FSM_INIT && transitions[i].from_id < P101_FSM_USER_START) || transitions[i].to_id < P101_FSM_USER_START || transitions[i].perform == NULL)
+        {
+            P101_ERROR_RAISE_USER_PRINTF(err, P101_FSM_ERROR_INVALID_TRANSITION_TABLE, "Invalid FSM transition table entry at index %zu", i);
+            goto done;
+        }
+
+        for(size_t j = 0; j < i; ++j)
+        {
+            if(transitions[i].from_id == transitions[j].from_id && transitions[i].to_id == transitions[j].to_id)
+            {
+                P101_ERROR_RAISE_USER_PRINTF(err, P101_FSM_ERROR_INVALID_TRANSITION_TABLE, "Duplicate FSM transition %d -> %d", transitions[i].from_id, transitions[i].to_id);
+                goto done;
+            }
+        }
+    }
+
+    valid = 1;
+
+done:
+    P101_TRACE_EXIT(env);
+    return valid;
+}
+
+static void fsm_write_states(p101_fsm_state_t *from_state_id, p101_fsm_state_t *to_state_id, p101_fsm_state_t from_id, p101_fsm_state_t to_id)
+{
+    if(from_state_id != NULL)
+    {
+        *from_state_id = from_id;
+    }
+
+    if(to_state_id != NULL)
+    {
+        *to_state_id = to_id;
+    }
+}
+
+static p101_fsm_state_func fsm_transition(const struct p101_env *env, p101_fsm_state_t from_id, p101_fsm_state_t to_id, const struct p101_fsm_transition transitions[], size_t transition_count)
+{
+    p101_fsm_state_func perform;
 
     P101_TRACE(env);
+    perform = NULL;
 
-    if(transitions == NULL)
-    {
-        return NULL;
-    }
-
-    elem_size = sizeof transitions[0];
-
-    /* Caller must pass a whole-number multiple of the element size. */
-    if((transitions_nbytes % elem_size) != 0)
-    {
-        return NULL;
-    }
-
-    n = transitions_nbytes / elem_size;
-
-    for(size_t i = 0; i < n; ++i)
+    for(size_t i = 0; i < transition_count; ++i)
     {
         if(transitions[i].from_id == from_id && transitions[i].to_id == to_id)
         {
-            return transitions[i].perform;
+            perform = transitions[i].perform;
+            break;
         }
     }
-    return NULL;
-}
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
+    P101_TRACE_EXIT(env);
+    return perform;
+}
 
 p101_fsm_state_t p101_fsm_exit_immediately(const struct p101_env *env, struct p101_error *err, void *arg)
 {
     P101_TRACE(env);
-
+    (void)err;
+    (void)arg;
+    P101_TRACE_EXIT(env);
     return P101_FSM_EXIT;
 }
-
-#pragma GCC diagnostic pop

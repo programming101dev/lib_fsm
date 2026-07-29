@@ -71,7 +71,60 @@ This compiles through the strict analysis pipeline: the clang-format check, clan
 ## **Testing**
 
 `./check.sh` is the one command to run before you submit: the format check, the strict build, the tests, and a short fuzz smoke run, with a single PASS/FAIL at the end.
-This library does not have a `test/` tree yet, so `./test.sh` reports that and exits; the rest of the gate still runs.
+
+The behavioral tests cover lifecycle ownership, terminal-state persistence,
+pause/retry behavior, invalid transition tables, bad-transition recovery,
+recursive-run rejection, C++ linkage, and balanced entry/exit tracing:
+
+```bash
+./test.sh
+```
+
+The fuzz target varies transition-table structure and callback results under
+libFuzzer, AddressSanitizer, and UndefinedBehaviorSanitizer:
+
+```bash
+./fuzz.sh -t 30
+```
+
+## FSM contract
+
+`p101_fsm_info_create()` borrows two context pairs:
+
+- the application `env` and `err`, passed to state callbacks;
+- the FSM `fsm_env` and `fsm_err`, used for allocation, validation, notifiers,
+  and bad-transition policy.
+
+The FSM copies and owns its name, but all four context objects remain owned by
+the caller and must outlive the FSM. Keeping the pairs separate prevents a
+diagnostic or policy failure inside the FSM from overwriting an application
+error.
+
+Transition tables contain executable edges only. Pass the number of elements
+(`sizeof(table) / sizeof(table[0])`), not the table's raw byte size, to
+`p101_fsm_run()`. Every entry requires a non-null callback. `P101_FSM_EXIT` and
+`P101_FSM_IGNORE` are callback results; neither is a transition-table
+destination.
+
+`p101_fsm_run()` returns:
+
+- `P101_FSM_RUN_EXITED` after a callback or bad-transition handler requests
+  `P101_FSM_EXIT`;
+- `P101_FSM_RUN_PAUSED` after one returns `P101_FSM_IGNORE`;
+- `P101_FSM_RUN_ERROR` when either error object is set or the contract is
+  violated.
+
+Exit is persistent: running an exited FSM again is a no-op. Pause retains the
+current state, so a later run retries that state callback. An FSM instance is
+not thread-safe or reentrant; use one instance per execution context and never
+run or destroy the same instance from one of its callbacks.
+
+Named library error codes are declared in `<p101_fsm/errors.h>`.
+
+The library can validate the transition table it receives, but it cannot prove
+that callbacks eventually terminate, that every application state is
+reachable, or that callback-owned data remains valid. Those remain caller
+responsibilities.
 
 ## **Installing**
 
