@@ -74,7 +74,8 @@ This compiles through the strict analysis pipeline: the clang-format check, clan
 
 The behavioral tests cover lifecycle ownership, terminal-state persistence,
 pause/retry behavior, invalid transition tables, bad-transition recovery,
-recursive-run rejection, C++ linkage, and balanced entry/exit tracing:
+recursive-operation rejection, observer reentrancy, C++ linkage, and balanced
+entry/exit tracing:
 
 ```bash
 ./test.sh
@@ -89,41 +90,97 @@ libFuzzer, AddressSanitizer, and UndefinedBehaviorSanitizer:
 
 ## FSM contract
 
-`p101_fsm_info_create()` borrows two context pairs:
+The fundamental operation is `p101_fsm_step()`. It executes exactly one state
+callback or one rejected-transition policy decision and produces a
+`struct p101_fsm_step_result`. `p101_fsm_run()` is only a convenience loop over
+that operation.
+
+### Construction and ownership
+
+`p101_fsm_info_create()` receives the transition table. It validates and copies
+the table, so a machine cannot resume with a different definition and the
+caller's array does not need to remain alive.
+
+Exactly one transition must originate at `P101_FSM_INIT`. Every executable
+state is at least `P101_FSM_USER_START`, and every table entry requires a
+callback.
+
+The function borrows two context pairs:
 
 - the application `env` and `err`, passed to state callbacks;
 - the FSM `fsm_env` and `fsm_err`, used for allocation, validation, notifiers,
   and bad-transition policy.
 
-The FSM copies and owns its name, but all four context objects remain owned by
-the caller and must outlive the FSM. Keeping the pairs separate prevents a
-diagnostic or policy failure inside the FSM from overwriting an application
-error.
+The machine owns its copied name and table. All four context objects remain
+caller-owned and must outlive it. Keeping the error pairs separate prevents an
+FSM diagnostic from replacing an application failure. Pass the FSM error
+object to `p101_fsm_info_destroy()` as well, because destruction refuses a
+recursive attempt and reports that policy failure explicitly.
 
-Transition tables contain executable edges only. Pass the number of elements
-(`sizeof(table) / sizeof(table[0])`), not the table's raw byte size, to
-`p101_fsm_run()`. Every entry requires a non-null callback. `P101_FSM_EXIT` and
-`P101_FSM_IGNORE` are callback results; neither is a transition-table
-destination.
+### Typed decisions
 
-`p101_fsm_run()` returns:
+Callbacks no longer overload integer state IDs with pause and exit sentinels.
+They fill a `struct p101_fsm_decision` using one of:
 
-- `P101_FSM_RUN_EXITED` after a callback or bad-transition handler requests
-  `P101_FSM_EXIT`;
-- `P101_FSM_RUN_PAUSED` after one returns `P101_FSM_IGNORE`;
-- `P101_FSM_RUN_ERROR` when either error object is set or the contract is
-  violated.
+```c
+p101_fsm_decide_transition(decision, NEXT_STATE);
+p101_fsm_decide_pause(decision);
+p101_fsm_decide_exit(decision);
+```
 
-Exit is persistent: running an exited FSM again is a no-op. Pause retains the
-current state, so a later run retries that state callback. An FSM instance is
-not thread-safe or reentrant; use one instance per execution context and never
-run or destroy the same instance from one of its callbacks.
+This makes a state ID, pause, and exit distinct operations. A callback that
+does not provide a decision is refused with
+`P101_FSM_REFUSAL_INVALID_CALLBACK_DECISION`.
 
-Named library error codes are declared in `<p101_fsm/errors.h>`.
+### Commit semantics
 
-The library can validate the transition table it receives, but it cannot prove
-that callbacks eventually terminate, that every application state is
-reachable, or that callback-owned data remains valid. Those remain caller
+A transition is committed only after:
+
+1. the edge exists;
+2. the will-change notifier succeeds;
+3. the state callback provides a valid decision without raising an application
+   error; and
+4. the did-change notifier succeeds.
+
+If any of those fail, the current state remains unchanged. A pause also leaves
+the state unchanged, so the next step retries the same callback.
+
+Each step result contains a monotonically increasing sequence number, the
+source state, attempted state, selected next state, status, and typed refusal.
+A step observer can collect these records while `run` executes. It is an
+observation hook and must not call back into or destroy the same machine.
+
+Exit is persistent. Stepping an exited machine reports
+`P101_FSM_STEP_EXITED` with `P101_FSM_REFUSAL_TERMINAL_MACHINE`.
+
+### Effects
+
+Callbacks may receive an optional `struct p101_fsm_effect_sink`. Calling
+`p101_fsm_emit_effect()` sends a small typed record to that sink. Tests can
+capture effects while a runtime can execute them; callers that do not need
+effect separation pass `NULL`.
+
+The sink is intentionally not an application framework. It has a string kind,
+an opaque byte payload, and caller-owned context. Delivery is synchronous and
+is not rolled back if the callback later pauses, returns an invalid decision,
+or raises an error; a sink that needs transactional behavior must stage effects
+itself.
+
+### Refusal and execution boundaries
+
+Unknown edges, invalid callback or handler decisions, redirect cycles, terminal
+machines, and recursive invocation have distinct `p101_fsm_refusal` values.
+The default unknown-transition handler also raises
+`P101_FSM_ERROR_UNKNOWN_TRANSITION`; a custom handler may redirect, pause, or
+exit.
+
+An FSM instance is not thread-safe or reentrant. A callback must not step, run,
+or destroy the same instance. Recursive operations are rejected before state
+is changed.
+
+The library validates table structure and transition decisions. It cannot prove
+that callbacks terminate, all states are reachable, effects are safe to
+execute, or callback-owned data remains valid. Those remain caller
 responsibilities.
 
 ## **Installing**

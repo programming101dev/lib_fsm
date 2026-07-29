@@ -15,31 +15,37 @@ struct fuzz_context
     uint8_t choice;
 };
 
-static p101_fsm_state_t choose_next(const struct p101_env *env, struct p101_error *err, void *arg)
+static void choose_next(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     const struct fuzz_context *context = (const struct fuzz_context *)arg;
 
     (void)env;
     (void)err;
+    (void)sink;
     switch(context->choice % 4U)
     {
         case 0:
-            return FUZZ_B;
+            p101_fsm_decide_transition(decision, FUZZ_B);
+            break;
         case 1:
-            return P101_FSM_EXIT;
+            p101_fsm_decide_exit(decision);
+            break;
         case 2:
-            return P101_FSM_IGNORE;
+            p101_fsm_decide_pause(decision);
+            break;
         default:
-            return P101_FSM_INIT;
+            p101_fsm_decide_transition(decision, P101_FSM_INIT);
+            break;
     }
 }
 
-static p101_fsm_state_t exit_state(const struct p101_env *env, struct p101_error *err, void *arg)
+static void exit_state(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
     (void)arg;
-    return P101_FSM_EXIT;
+    (void)sink;
+    p101_fsm_decide_exit(decision);
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
@@ -51,6 +57,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     struct p101_fsm_info      *fsm;
     struct fuzz_context        context;
     p101_fsm_run_result        result;
+    struct p101_fsm_step_result last_step;
     struct p101_fsm_transition transitions[] = {
         {P101_FSM_INIT, FUZZ_A, choose_next},
         {FUZZ_A,        FUZZ_B, exit_state },
@@ -71,13 +78,13 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
                 transitions[0].perform = NULL;
                 break;
             case 1:
-                transitions[0].to_id = P101_FSM_EXIT;
+                transitions[0].to_id = P101_FSM_STATE_NONE;
                 break;
             case 2:
                 transitions[1] = transitions[0];
                 break;
             case 3:
-                transitions[0].from_id = P101_FSM_IGNORE;
+                transitions[0].from_id = P101_FSM_STATE_NONE;
                 break;
             default:
                 break;
@@ -96,14 +103,14 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 
     app_env = p101_env_create(app_err, NULL);
     fsm_env = p101_env_create(fsm_err, NULL);
-    fsm     = p101_fsm_info_create(app_env, app_err, "fuzz", fsm_env, fsm_err, NULL);
+    fsm     = p101_fsm_info_create(app_env, app_err, "fuzz", fsm_env, fsm_err, transitions, transition_count, NULL);
     if(fsm != NULL)
     {
-        result = p101_fsm_run(fsm, NULL, NULL, &context, transitions, transition_count);
+        result = p101_fsm_run(fsm, &context, NULL, &last_step);
         (void)result;
     }
 
-    p101_fsm_info_destroy(app_env, &fsm);
+    p101_fsm_info_destroy(app_env, fsm_err, &fsm);
     p101_env_destroy(fsm_env);
     p101_env_destroy(app_env);
     p101_error_destroy(fsm_err);

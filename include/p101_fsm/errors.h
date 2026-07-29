@@ -2,7 +2,7 @@
 #define LIBP101_FSM_ERRORS_H
 
 /*
- * Copyright 2021-2024 D'Arcy Smith.
+ * Copyright 2021-2026 D'Arcy Smith.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@ typedef enum
     P101_FSM_ERROR_INVALID_TRANSITION_TABLE,
     P101_FSM_ERROR_UNKNOWN_TRANSITION,
     P101_FSM_ERROR_HANDLER_LOOP,
-    P101_FSM_ERROR_REENTRANT_RUN,
+    P101_FSM_ERROR_INVALID_DECISION,
+    P101_FSM_ERROR_REENTRANT_OPERATION,
+    P101_FSM_ERROR_EFFECT,
 } p101_fsm_error;
 
 #endif    // LIBP101_FSM_ERRORS_H
