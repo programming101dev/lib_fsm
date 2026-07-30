@@ -82,16 +82,26 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     {
         goto done;
     }
-
-    info = (struct p101_fsm_info *)p101_calloc(target_env, target_err, 1U, sizeof(*info));
-    if(info == NULL)
+    if(p101_error_has_error(target_err))
     {
         goto done;
     }
 
-    info->name        = p101_strdup(target_env, target_err, name);
+    info = (struct p101_fsm_info *)p101_calloc(target_env, target_err, 1U, sizeof(*info));
+    if(info == NULL || p101_error_has_error(target_err))
+    {
+        goto done;
+    }
+
+    info->name = p101_strdup(target_env, target_err, name);
+    if(info->name == NULL || p101_error_has_error(target_err))
+    {
+        p101_free(target_env, info);
+        info = NULL;
+        goto done;
+    }
     info->transitions = (struct p101_fsm_transition *)p101_calloc(target_env, target_err, transition_count, sizeof(*info->transitions));
-    if(info->name == NULL || info->transitions == NULL || p101_error_has_error(target_err))
+    if(info->transitions == NULL || p101_error_has_error(target_err))
     {
         p101_free(target_env, info->transitions);
         p101_free(target_env, info->name);
