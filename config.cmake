@@ -45,5 +45,5 @@ set(p101_fsm_LINK_LIBRARIES
         p101_env
         p101_tool_event
         p101_c
-        p101_posix
+        p101_text
 )

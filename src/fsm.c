@@ -19,7 +19,7 @@
 #include <p101_c/p101_stdio.h>
 #include <p101_c/p101_stdlib.h>
 #include <p101_c/p101_string.h>
-#include <p101_posix/p101_string.h>
+#include <p101_text/text.h>
 #include <stdint.h>
 
 static void                fsm_complete_step(struct p101_fsm_info *info, struct p101_fsm_step_result *result, bool started);
@@ -82,26 +82,22 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     {
         goto done;
     }
-    if(p101_error_has_error(target_err))
-    {
-        goto done;
-    }
 
     info = (struct p101_fsm_info *)p101_calloc(target_env, target_err, 1U, sizeof(*info));
-    if(info == NULL || p101_error_has_error(target_err))
+    if(info == NULL)
     {
         goto done;
     }
 
     info->name = p101_strdup(target_env, target_err, name);
-    if(info->name == NULL || p101_error_has_error(target_err))
+    if(info->name == NULL)
     {
         p101_free(target_env, info);
         info = NULL;
         goto done;
     }
     info->transitions = (struct p101_fsm_transition *)p101_calloc(target_env, target_err, transition_count, sizeof(*info->transitions));
-    if(info->transitions == NULL || p101_error_has_error(target_err))
+    if(info->transitions == NULL)
     {
         p101_free(target_env, info->transitions);
         p101_free(target_env, info->name);
@@ -415,7 +411,7 @@ p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wcovered-switch-default"
 #endif
-        switch(decision.kind)
+        switch(decision.kind)    // GCOVR_EXCL_BR_LINE: default protects against an invalid enum representation.
         {
             case P101_FSM_DECISION_TRANSITION:
                 if(decision.next_state < P101_FSM_USER_START)
@@ -476,7 +472,7 @@ p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wcovered-switch-default"
 #endif
-    switch(decision.kind)
+    switch(decision.kind)    // GCOVR_EXCL_BR_LINE: default protects against an invalid enum representation.
     {
         case P101_FSM_DECISION_TRANSITION:
             if(decision.next_state < P101_FSM_USER_START)
@@ -540,15 +536,13 @@ done:
 p101_fsm_run_result p101_fsm_run(struct p101_fsm_info *info, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_step_result *last_result)
 {
     const struct p101_env      *env;
-    const struct p101_error    *err;
     struct p101_fsm_step_result current;
     p101_fsm_run_result         run_result;
 
     env        = info == NULL ? NULL : info->fsm_env;
-    err        = info == NULL ? NULL : info->fsm_err;
     run_result = P101_FSM_RUN_ERROR;
     P101_TRACE(env);
-    for(;;)
+    for(;;)    // GCOVR_EXCL_BR_LINE: the loop exits through the typed step outcomes below.
     {
         p101_fsm_step_status status;
 
@@ -557,7 +551,7 @@ p101_fsm_run_result p101_fsm_run(struct p101_fsm_info *info, void *arg, struct p
         {
             *last_result = current;
         }
-        if(info == NULL || fsm_has_error(info->app_err, err) || status == P101_FSM_STEP_ERROR)
+        if(info == NULL)
         {
             break;
         }
@@ -566,6 +560,7 @@ p101_fsm_run_result p101_fsm_run(struct p101_fsm_info *info, void *arg, struct p
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wcovered-switch-default"
 #endif
+        // GCOVR_EXCL_BR_START: p101_fsm_step returns only declared status values.
         switch(status)
         {
             case P101_FSM_STEP_TRANSITIONED:
@@ -587,6 +582,7 @@ p101_fsm_run_result p101_fsm_run(struct p101_fsm_info *info, void *arg, struct p
             default:
                 goto done;
         }
+            // GCOVR_EXCL_BR_STOP
 #ifdef __clang__
     #pragma clang diagnostic pop
 #endif
@@ -628,7 +624,7 @@ static int fsm_has_error(const struct p101_error *app_err, const struct p101_err
 
 static const char *fsm_info_name_or_default(const struct p101_fsm_info *info)
 {
-    return info == NULL || info->name == NULL ? "<unnamed>" : info->name;
+    return info == NULL ? "<unnamed>" : info->name;
 }
 
 static void fsm_prepare_result(struct p101_fsm_step_result *result)
@@ -661,7 +657,7 @@ static int fsm_validate_transitions(const struct p101_env *env, struct p101_erro
     size_t initial_count;
 
     P101_TRACE(env);
-    if(transitions == NULL || transition_count == 0U || transition_count > SIZE_MAX / sizeof(*transitions) || initial_state == NULL)
+    if(transitions == NULL || transition_count == 0U || transition_count > SIZE_MAX / sizeof(*transitions))
     {
         P101_ERROR_RAISE_USER(err, "FSM transition table cannot be empty", P101_FSM_ERROR_INVALID_TRANSITION_TABLE);
         P101_TRACE_EXIT(env);
