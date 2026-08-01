@@ -75,6 +75,14 @@ target_include_directories(p101_fsm_under_test PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         ${_P101_INC_DIRS}
 )
+target_compile_definitions(p101_fsm_under_test PUBLIC _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
+if(APPLE)
+    target_compile_definitions(p101_fsm_under_test PUBLIC _DARWIN_C_SOURCE)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(p101_fsm_under_test PUBLIC _GNU_SOURCE)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    target_compile_definitions(p101_fsm_under_test PUBLIC _BSD_SOURCE __BSD_VISIBLE)
+endif()
 target_compile_options(p101_fsm_under_test PRIVATE ${P101_TEST_COVERAGE_FLAGS})
 target_link_libraries(p101_fsm_under_test PUBLIC ${_P101_RESOLVED})
 
