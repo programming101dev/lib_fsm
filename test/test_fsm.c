@@ -1,10 +1,10 @@
 #include "p101_fsm/errors.h"
 #include "p101_fsm/fsm.h"
+#include <errno.h>
 #include <p101_env/env.h>
 #include <p101_error/error.h>
-#include <errno.h>
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 enum test_states
@@ -12,6 +12,7 @@ enum test_states
     STATE_A = P101_FSM_USER_START,
     STATE_B,
     STATE_C,
+    STATE_SPARSE = 1000003,
 };
 
 struct fixture
@@ -25,17 +26,18 @@ struct fixture
 
 struct callback_context
 {
-    struct p101_fsm_info         *fsm;
-    struct p101_fsm_info        **fsm_pointer;
-    struct p101_error            *fsm_err;
-    struct p101_fsm_step_result   nested_result;
-    p101_fsm_step_status          nested_status;
-    int                           calls;
-    int                           effects;
-    int                           observations;
-    size_t                        last_sequence;
-    char                          effect_kind[16];
-    int                           effect_value;
+    struct p101_fsm_info       *fsm;
+    struct p101_fsm_info      **fsm_pointer;
+    struct p101_error          *fsm_err;
+    struct p101_fsm_step_result nested_result;
+    p101_fsm_step_status        nested_status;
+    int                         calls;
+    int                         effects;
+    int                         observations;
+    size_t                      last_sequence;
+    p101_fsm_state_t            selected_state;
+    char                        effect_kind[16];
+    int                         effect_value;
 };
 
 struct fault_context
@@ -55,6 +57,9 @@ static int              bad_calls;
 static p101_fsm_state_t redirect_state;
 static int              redirect_calls;
 
+void   p101_fsm_test_set_step_sequence(struct p101_fsm_info *info, size_t sequence);
+size_t p101_fsm_test_transition_probe_count(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id);
+
 #define EXPECT(condition)                                                                                                                                                                                                                                          \
     do                                                                                                                                                                                                                                                             \
     {                                                                                                                                                                                                                                                              \
@@ -66,6 +71,7 @@ static int              redirect_calls;
     } while(0)
 
 static void state_to_b(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision);
+static void state_to_selected(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision);
 static void state_exit(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision);
 static int  fault_injector(const struct p101_env *env, const char *call_name, void *arg);
 
@@ -131,6 +137,17 @@ static void state_exit(const struct p101_env *env, struct p101_error *err, void 
         context->calls++;
     }
     p101_fsm_decide_exit(decision);
+}
+
+static void state_to_selected(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+{
+    struct callback_context *context = (struct callback_context *)arg;
+
+    (void)env;
+    (void)err;
+    (void)sink;
+    context->calls++;
+    p101_fsm_decide_transition(decision, context->selected_state);
 }
 
 static void state_pause_once(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
@@ -213,6 +230,15 @@ static void state_effect(const struct p101_env *env, struct p101_error *err, voi
     (void)arg;
     p101_fsm_emit_effect(env, err, sink, "answer", &value, sizeof(value));
     p101_fsm_decide_exit(decision);
+}
+
+static void state_effect_then_pause(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+{
+    static const int value = 7;
+
+    (void)arg;
+    p101_fsm_emit_effect(env, err, sink, "discarded", &value, sizeof(value));
+    p101_fsm_decide_pause(decision);
 }
 
 static void redirect_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
@@ -426,10 +452,10 @@ static void trace_exit(const struct p101_env *env, const char *file_name, const 
 
 static void test_create_and_bound_table(void)
 {
-    struct fixture             fixture;
-    struct callback_context    context = {0};
+    struct fixture              fixture;
+    struct callback_context     context = {0};
     struct p101_fsm_step_result result;
-    struct p101_fsm_transition transitions[] = {
+    struct p101_fsm_transition  transitions[] = {
         {P101_FSM_INIT, STATE_A, state_exit},
     };
 
@@ -444,9 +470,39 @@ static void test_create_and_bound_table(void)
     fixture_destroy(&fixture);
 }
 
+static void test_transition_hash_map(void)
+{
+    struct fixture                          fixture;
+    struct callback_context                 context;
+    struct p101_fsm_step_result             result;
+    static const struct p101_fsm_transition transitions[] = {
+        {P101_FSM_INIT, STATE_A,      state_to_selected},
+        {STATE_A,       STATE_B,      state_exit       },
+        {STATE_A,       STATE_C,      state_exit       },
+        {STATE_A,       STATE_SPARSE, state_exit       },
+    };
+    static const p101_fsm_state_t targets[] = {STATE_B, STATE_C, STATE_SPARSE};
+
+    for(size_t i = 0U; i < sizeof(targets) / sizeof(targets[0]); i++)
+    {
+        memset(&context, 0, sizeof(context));
+        context.selected_state = targets[i];
+        fixture_create(&fixture, "hash-map", transitions, sizeof(transitions) / sizeof(transitions[0]), NULL);
+        EXPECT(fixture.fsm != NULL);
+        EXPECT(p101_fsm_run(fixture.fsm, &context, NULL, &result) == P101_FSM_RUN_EXITED);
+        EXPECT(context.calls == 2);
+        fixture_destroy(&fixture);
+    }
+
+    fixture_create(&fixture, "hash-collision", transitions, sizeof(transitions) / sizeof(transitions[0]), NULL);
+    EXPECT(fixture.fsm != NULL);
+    EXPECT(p101_fsm_test_transition_probe_count(fixture.fsm, STATE_A, STATE_C) > 1U);
+    fixture_destroy(&fixture);
+}
+
 static void test_invalid_create(void)
 {
-    struct fixture fixture;
+    struct fixture                          fixture;
     static const struct p101_fsm_transition multiple_initial[] = {
         {P101_FSM_INIT, STATE_A, state_exit},
         {P101_FSM_INIT, STATE_B, state_exit},
@@ -513,8 +569,8 @@ static void test_invalid_create(void)
 
 static void test_create_error_paths(void)
 {
-    struct fixture       fixture;
-    struct fault_context fault;
+    struct fixture        fixture;
+    struct fault_context  fault;
     struct p101_fsm_info *fsm;
     struct p101_error    *err;
 
@@ -603,8 +659,8 @@ static void test_step_commit_and_terminal_result(void)
 
 static void test_pause_does_not_commit(void)
 {
-    struct fixture              fixture;
-    struct p101_fsm_step_result result;
+    struct fixture                          fixture;
+    struct p101_fsm_step_result             result;
     static const struct p101_fsm_transition transitions[] = {
         {P101_FSM_INIT, STATE_A, state_pause_once},
     };
@@ -620,8 +676,8 @@ static void test_pause_does_not_commit(void)
 
 static void test_errors_do_not_commit(void)
 {
-    struct fixture              fixture;
-    struct p101_fsm_step_result result;
+    struct fixture                          fixture;
+    struct p101_fsm_step_result             result;
     static const struct p101_fsm_transition callback_error[] = {
         {P101_FSM_INIT, STATE_A, state_error},
     };
@@ -642,7 +698,13 @@ static void test_errors_do_not_commit(void)
     EXPECT(p101_error_has_error(fixture.fsm_err));
     fixture_destroy(&fixture);
 
-    fixture_create(&fixture, "exit-notifier-error", (const struct p101_fsm_transition[]){{P101_FSM_INIT, STATE_A, state_exit}}, 1U, NULL);
+    fixture_create(&fixture,
+                   "exit-notifier-error",
+                   (const struct p101_fsm_transition[]){
+                       {P101_FSM_INIT, STATE_A, state_exit}
+    },
+                   1U,
+                   NULL);
     p101_fsm_info_set_did_change_state_notifier(fixture.fsm, did_error_notifier);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_ERROR);
     EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
@@ -659,9 +721,9 @@ static void test_errors_do_not_commit(void)
 
 static void test_typed_refusals(void)
 {
-    struct fixture              fixture;
-    struct callback_context     context = {0};
-    struct p101_fsm_step_result result;
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_step_result             result;
     static const struct p101_fsm_transition unknown[] = {
         {P101_FSM_INIT, STATE_A, state_to_b},
         {STATE_A,       STATE_C, state_exit},
@@ -738,9 +800,9 @@ static void test_typed_refusals(void)
 
 static void test_redirect_is_one_step(void)
 {
-    struct fixture              fixture;
-    struct callback_context     context = {0};
-    struct p101_fsm_step_result result;
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_step_result             result;
     static const struct p101_fsm_transition transitions[] = {
         {P101_FSM_INIT, STATE_A, state_to_b},
         {STATE_A,       STATE_C, state_exit},
@@ -776,10 +838,10 @@ static void test_redirect_is_one_step(void)
 
 static void test_run_is_step_loop(void)
 {
-    struct fixture              fixture;
-    struct callback_context     context = {0};
-    struct p101_fsm_step_result result;
-    p101_fsm_run_result         run_result;
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_step_result             result;
+    p101_fsm_run_result                     run_result;
     static const struct p101_fsm_transition transitions[] = {
         {P101_FSM_INIT, STATE_A, state_to_b},
         {STATE_A,       STATE_C, state_exit},
@@ -795,7 +857,13 @@ static void test_run_is_step_loop(void)
     fixture_destroy(&fixture);
 
     pause_calls = 0;
-    fixture_create(&fixture, "run-pause", (const struct p101_fsm_transition[]){{P101_FSM_INIT, STATE_A, state_pause_once}}, 1U, NULL);
+    fixture_create(&fixture,
+                   "run-pause",
+                   (const struct p101_fsm_transition[]){
+                       {P101_FSM_INIT, STATE_A, state_pause_once}
+    },
+                   1U,
+                   NULL);
     EXPECT(p101_fsm_run(fixture.fsm, NULL, NULL, &result) == P101_FSM_RUN_PAUSED);
     EXPECT(result.status == P101_FSM_STEP_PAUSED);
     fixture_destroy(&fixture);
@@ -805,21 +873,33 @@ static void test_run_is_step_loop(void)
     EXPECT(result.status == P101_FSM_STEP_REFUSED);
     fixture_destroy(&fixture);
 
-    fixture_create(&fixture, "run-error", (const struct p101_fsm_transition[]){{P101_FSM_INIT, STATE_A, state_error}}, 1U, NULL);
+    fixture_create(&fixture,
+                   "run-error",
+                   (const struct p101_fsm_transition[]){
+                       {P101_FSM_INIT, STATE_A, state_error}
+    },
+                   1U,
+                   NULL);
     EXPECT(p101_fsm_run(fixture.fsm, NULL, NULL, &result) == P101_FSM_RUN_ERROR);
     EXPECT(result.status == P101_FSM_STEP_ERROR);
     fixture_destroy(&fixture);
 
-    fixture_create(&fixture, "run-invalid-callback", (const struct p101_fsm_transition[]){{P101_FSM_INIT, STATE_A, state_invalid}}, 1U, NULL);
+    fixture_create(&fixture,
+                   "run-invalid-callback",
+                   (const struct p101_fsm_transition[]){
+                       {P101_FSM_INIT, STATE_A, state_invalid}
+    },
+                   1U,
+                   NULL);
     EXPECT(p101_fsm_run(fixture.fsm, NULL, NULL, NULL) == P101_FSM_RUN_REFUSED);
     fixture_destroy(&fixture);
 }
 
 static void test_reentrant_operations_are_rejected(void)
 {
-    struct fixture              fixture;
-    struct callback_context     context = {0};
-    struct p101_fsm_step_result result;
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_step_result             result;
     static const struct p101_fsm_transition reenter[] = {
         {P101_FSM_INIT, STATE_A, state_reenter},
     };
@@ -847,10 +927,10 @@ static void test_reentrant_operations_are_rejected(void)
 
 static void test_effects_and_step_observer(void)
 {
-    struct fixture              fixture;
-    struct callback_context     context = {0};
-    struct p101_fsm_step_result result;
-    struct p101_fsm_effect_sink sink;
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_step_result             result;
+    struct p101_fsm_effect_sink             sink;
     static const struct p101_fsm_transition transitions[] = {
         {P101_FSM_INIT, STATE_A, state_effect},
     };
@@ -893,11 +973,117 @@ static void test_effect_validation(void)
     fixture_destroy(&fixture);
 }
 
-static void test_step_observer_cannot_reenter(void)
+static void test_transactional_effect_batch(void)
+{
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_effect_batch           *batch;
+    struct p101_fsm_effect_sink             batch_sink;
+    struct p101_fsm_effect_sink             target;
+    struct p101_fsm_step_result             result;
+    static const struct p101_fsm_transition committed[] = {
+        {P101_FSM_INIT, STATE_A, state_effect},
+    };
+    static const struct p101_fsm_transition paused[] = {
+        {P101_FSM_INIT, STATE_A, state_effect_then_pause},
+    };
+
+    target.handle  = effect_handler;
+    target.context = &context;
+
+    fixture_create(&fixture, "committed-effect", committed, 1U, NULL);
+    batch      = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    batch_sink = p101_fsm_effect_batch_sink(batch);
+    EXPECT(batch != NULL);
+    EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_EXITED);
+    EXPECT(context.effects == 0);
+    EXPECT(p101_fsm_effect_batch_count(batch) == 1U);
+    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, &result, &target) == 0);
+    EXPECT(context.effects == 1);
+    EXPECT(strcmp(context.effect_kind, "answer") == 0);
+    EXPECT(context.effect_value == 42);
+    EXPECT(p101_fsm_effect_batch_count(batch) == 0U);
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
+    EXPECT(batch == NULL);
+    fixture_destroy(&fixture);
+
+    memset(&context, 0, sizeof(context));
+    fixture_create(&fixture, "discarded-effect", paused, 1U, NULL);
+    batch      = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    batch_sink = p101_fsm_effect_batch_sink(batch);
+    EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_PAUSED);
+    EXPECT(p101_fsm_effect_batch_count(batch) == 1U);
+    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, &result, &target) == 0);
+    EXPECT(context.effects == 0);
+    EXPECT(p101_fsm_effect_batch_count(batch) == 0U);
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
+    fixture_destroy(&fixture);
+
+    fixture_create(&fixture, "effect-capacity", committed, 1U, NULL);
+    batch      = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 4U);
+    batch_sink = p101_fsm_effect_batch_sink(batch);
+    EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_REFUSED);
+    EXPECT(result.refusal == P101_FSM_REFUSAL_EFFECT_CAPACITY);
+    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_error_is_error(fixture.app_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT_CAPACITY));
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
+    fixture_destroy(&fixture);
+}
+
+static void test_effect_batch_validation(void)
+{
+    struct fixture                fixture;
+    struct p101_fsm_effect_batch *batch;
+    struct p101_fsm_effect_sink   sink;
+    struct p101_fsm_step_result   result = {P101_FSM_STEP_PAUSED, 0U, 0, 0, 0, P101_FSM_REFUSAL_NONE};
+
+    fixture_create(&fixture, "effect-batch-validation", basic_transitions, 2U, NULL);
+    EXPECT(p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 0U, 1U) == NULL);
+    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    p101_error_reset(fixture.fsm_err);
+    EXPECT(p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 0U) == NULL);
+    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    p101_error_reset(fixture.fsm_err);
+
+    sink = p101_fsm_effect_batch_sink(NULL);
+    EXPECT(sink.handle == NULL);
+    EXPECT(sink.context == NULL);
+    EXPECT(p101_fsm_effect_batch_count(NULL) == 0U);
+    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, NULL, &result, &sink) == -1);
+    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    p101_error_reset(fixture.fsm_err);
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, NULL);
+
+    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 32U);
+    EXPECT(batch != NULL);
+    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, NULL, &sink) == -1);
+    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    p101_error_reset(fixture.fsm_err);
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
+    fixture_destroy(&fixture);
+}
+
+static void test_step_sequence_exhaustion(void)
 {
     struct fixture              fixture;
-    struct callback_context     context = {0};
     struct p101_fsm_step_result result;
+
+    fixture_create(&fixture, "sequence-exhaustion", basic_transitions, 2U, NULL);
+    p101_fsm_test_set_step_sequence(fixture.fsm, SIZE_MAX);
+    EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_REFUSED);
+    EXPECT(result.sequence == SIZE_MAX);
+    EXPECT(result.refusal == P101_FSM_REFUSAL_SEQUENCE_EXHAUSTED);
+    EXPECT(p101_fsm_info_get_step_sequence(fixture.fsm) == SIZE_MAX);
+    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_SEQUENCE_EXHAUSTED));
+    fixture_destroy(&fixture);
+}
+
+static void test_step_observer_cannot_reenter(void)
+{
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_step_result             result;
     static const struct p101_fsm_transition transitions[] = {
         {P101_FSM_INIT, STATE_A, state_exit},
     };
@@ -1024,6 +1210,7 @@ static void test_balanced_tracing(void)
 int main(void)
 {
     test_create_and_bound_table();
+    test_transition_hash_map();
     test_invalid_create();
     test_create_error_paths();
     test_step_commit_and_terminal_result();
@@ -1035,6 +1222,9 @@ int main(void)
     test_reentrant_operations_are_rejected();
     test_effects_and_step_observer();
     test_effect_validation();
+    test_transactional_effect_batch();
+    test_effect_batch_validation();
+    test_step_sequence_exhaustion();
     test_step_observer_cannot_reenter();
     test_configuration_and_null_api();
     test_balanced_tracing();

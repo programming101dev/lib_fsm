@@ -25,6 +25,7 @@ extern "C"
 #endif
 
     struct p101_fsm_info;
+    struct p101_fsm_effect_batch;
     struct p101_fsm_effect_sink;
 
     typedef enum
@@ -59,6 +60,8 @@ extern "C"
         P101_FSM_REFUSAL_REDIRECT_CYCLE,
         P101_FSM_REFUSAL_TERMINAL_MACHINE,
         P101_FSM_REFUSAL_REENTRANT_INVOCATION,
+        P101_FSM_REFUSAL_EFFECT_CAPACITY,
+        P101_FSM_REFUSAL_SEQUENCE_EXHAUSTED,
     } p101_fsm_refusal;
 
     typedef enum
@@ -119,11 +122,12 @@ extern "C"
     };
 
     /*
-     * The machine copies and owns the validated transition table. env/err are
-     * borrowed for application callbacks; fsm_env/fsm_err are borrowed for
-     * FSM allocation, validation, notification, and policy. All borrowed
-     * objects must outlive the machine. Pass the FSM error object to destroy
-     * so a recursive destruction refusal has an explicit error destination.
+     * The machine validates the transition table and builds an owned,
+     * immutable hash map. env/err are borrowed for application callbacks;
+     * fsm_env/fsm_err are borrowed for FSM allocation, validation,
+     * notification, and policy. All borrowed objects must outlive the machine.
+     * Pass the FSM error object to destroy so a recursive destruction refusal
+     * has an explicit error destination.
      *
      * Exactly one transition must originate at P101_FSM_INIT. All executable
      * states are at least P101_FSM_USER_START. A machine is neither thread-safe
@@ -157,6 +161,21 @@ extern "C"
     void p101_fsm_decide_pause(struct p101_fsm_decision *decision);
     void p101_fsm_decide_exit(struct p101_fsm_decision *decision);
     void p101_fsm_emit_effect(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_sink *sink, const char *kind, const void *data, size_t data_size);
+
+    /*
+     * A bounded batch stages effect kind strings and payload bytes without
+     * allocating during exactly one step. Calling sink() starts a fresh batch.
+     * After step returns, finish_step() delivers the batch only for a committed
+     * transition or exit and otherwise discards it. Do not pass a batch sink
+     * to p101_fsm_run(), because run spans multiple step transactions.
+     * Delivery itself is external and cannot be rolled back if its handler
+     * fails.
+     */
+    struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env *env, struct p101_error *err, size_t maximum_effects, size_t maximum_bytes) P101_ATTR_MALLOC P101_ATTR_WARN_UNUSED_RESULT;
+    void                          p101_fsm_effect_batch_destroy(const struct p101_env *env, struct p101_fsm_effect_batch **batch);
+    struct p101_fsm_effect_sink   p101_fsm_effect_batch_sink(struct p101_fsm_effect_batch *batch);
+    size_t                        p101_fsm_effect_batch_count(const struct p101_fsm_effect_batch *batch);
+    int                           p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_result *result, struct p101_fsm_effect_sink *target);
 
     /*
      * step executes exactly one state callback or one rejected-transition

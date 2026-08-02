@@ -30,6 +30,7 @@ set(LIBRARY_TARGETS p101_fsm)
 
 # Source files for the library
 set(p101_fsm_SOURCES
+        src/effect.c
         src/fsm.c
 )
 

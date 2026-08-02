@@ -97,9 +97,14 @@ that operation.
 
 ### Construction and ownership
 
-`p101_fsm_info_create()` receives the transition table. It validates and copies
-the table, so a machine cannot resume with a different definition and the
-caller's array does not need to remain alive.
+`p101_fsm_info_create()` receives the transition table. It validates the table
+and builds an owned, immutable open-addressed hash map, so a machine cannot
+resume with a different definition and the caller's array does not need to
+remain alive. Construction is linear on average, transition lookup is constant
+time on average, and no transition lookup allocates memory. The map stays at
+or below a 50% load factor to keep probe chains short; that intentionally uses
+more memory than the former compact array. Its internal iteration order is not
+part of the API.
 
 Exactly one transition must originate at `P101_FSM_INIT`. Every executable
 state is at least `P101_FSM_USER_START`, and every table entry requires a
@@ -111,11 +116,11 @@ The function borrows two context pairs:
 - the FSM `fsm_env` and `fsm_err`, used for allocation, validation, notifiers,
   and bad-transition policy.
 
-The machine owns its copied name and table. All four context objects remain
-caller-owned and must outlive it. Keeping the error pairs separate prevents an
-FSM diagnostic from replacing an application failure. Pass the FSM error
-object to `p101_fsm_info_destroy()` as well, because destruction refuses a
-recursive attempt and reports that policy failure explicitly.
+The machine owns its copied name and transition map. All four context objects
+remain caller-owned and must outlive it. Keeping the error pairs separate
+prevents an FSM diagnostic from replacing an application failure. Pass the FSM
+error object to `p101_fsm_info_destroy()` as well, because destruction refuses
+a recursive attempt and reports that policy failure explicitly.
 
 ### Typed decisions
 
@@ -147,8 +152,10 @@ the state unchanged, so the next step retries the same callback.
 
 Each step result contains a monotonically increasing sequence number, the
 source state, attempted state, selected next state, status, and typed refusal.
-A step observer can collect these records while `run` executes. It is an
-observation hook and must not call back into or destroy the same machine.
+The sequence never wraps: an exhausted `size_t` sequence produces
+`P101_FSM_REFUSAL_SEQUENCE_EXHAUSTED`. A step observer can collect these
+records while `run` executes. It is an observation hook and must not call back
+into or destroy the same machine.
 
 Exit is persistent. Stepping an exited machine reports
 `P101_FSM_STEP_EXITED` with `P101_FSM_REFUSAL_TERMINAL_MACHINE`.
@@ -161,10 +168,17 @@ capture effects while a runtime can execute them; callers that do not need
 effect separation pass `NULL`.
 
 The sink is intentionally not an application framework. It has a string kind,
-an opaque byte payload, and caller-owned context. Delivery is synchronous and
-is not rolled back if the callback later pauses, returns an invalid decision,
-or raises an error; a sink that needs transactional behavior must stage effects
-itself.
+an opaque byte payload, and caller-owned context. Direct delivery is
+synchronous and is not rolled back if the callback later pauses, returns an
+invalid decision, or raises an error.
+
+`p101_fsm_effect_batch_*` provides the bounded transactional option. It copies
+effects into caller-sized storage during one `p101_fsm_step()` and delivers
+them only after the step commits a transition or exit. Paused, refused, and
+failed steps discard the batch. Capacity exhaustion is the typed
+`P101_FSM_REFUSAL_EFFECT_CAPACITY`. The batch is deliberately step-scoped and
+must not be passed to `p101_fsm_run()`. Final delivery still invokes external
+code and therefore cannot undo effects already accepted by the target.
 
 ### Refusal and execution boundaries
 

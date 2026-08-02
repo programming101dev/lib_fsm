@@ -69,13 +69,14 @@ foreach(_library IN LISTS P101_LIBS)
 endforeach()
 
 add_library(p101_fsm_under_test STATIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src/effect.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/../src/fsm.c"
 )
 target_include_directories(p101_fsm_under_test PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         ${_P101_INC_DIRS}
 )
-target_compile_definitions(p101_fsm_under_test PUBLIC _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700)
+target_compile_definitions(p101_fsm_under_test PUBLIC _POSIX_C_SOURCE=200809L _XOPEN_SOURCE=700 P101_FSM_TESTING=1)
 if(APPLE)
     target_compile_definitions(p101_fsm_under_test PUBLIC _DARWIN_C_SOURCE)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")

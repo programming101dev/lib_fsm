@@ -1,4 +1,9 @@
 function	current_source
+p101_fsm_effect_batch_count	libraries/lib_fsm/src/effect.c
+p101_fsm_effect_batch_create	libraries/lib_fsm/src/effect.c
+p101_fsm_effect_batch_destroy	libraries/lib_fsm/src/effect.c
+p101_fsm_effect_batch_finish_step	libraries/lib_fsm/src/effect.c
+p101_fsm_effect_batch_sink	libraries/lib_fsm/src/effect.c
 p101_fsm_decide_exit	libraries/lib_fsm/src/fsm.c
 p101_fsm_decide_pause	libraries/lib_fsm/src/fsm.c
 p101_fsm_decide_transition	libraries/lib_fsm/src/fsm.c
