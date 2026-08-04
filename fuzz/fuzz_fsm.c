@@ -50,15 +50,14 @@ static void exit_state(const struct p101_env *env, struct p101_error *err, void 
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    struct p101_error         *app_err;
-    struct p101_env           *app_env;
-    struct p101_error         *fsm_err;
-    struct p101_env           *fsm_env;
-    struct p101_fsm_info      *fsm;
-    struct fuzz_context        context;
-    p101_fsm_run_result        result;
+    struct p101_error          *app_err;
+    struct p101_env            *app_env;
+    struct p101_error          *fsm_err;
+    struct p101_env            *fsm_env;
+    struct p101_fsm_info       *fsm;
+    struct fuzz_context         context;
     struct p101_fsm_step_result last_step;
-    struct p101_fsm_transition transitions[] = {
+    struct p101_fsm_transition  transitions[] = {
         {P101_FSM_INIT, FUZZ_A, choose_next},
         {FUZZ_A,        FUZZ_B, exit_state },
     };
@@ -106,8 +105,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     fsm     = p101_fsm_info_create(app_env, app_err, "fuzz", fsm_env, fsm_err, transitions, transition_count, NULL);
     if(fsm != NULL)
     {
-        result = p101_fsm_run(fsm, &context, NULL, &last_step);
-        (void)result;
+        (void)p101_fsm_run(fsm, &context, NULL, &last_step);
     }
 
     p101_fsm_info_destroy(app_env, fsm_err, &fsm);
