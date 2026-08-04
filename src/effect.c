@@ -158,7 +158,7 @@ static void batch_effect_handler(const struct p101_env *env, struct p101_error *
         goto p101_single_exit_;
     }
     kind_size = p101_strlen(env, effect->kind) + 1U;
-    if(kind_size == 0U || effect->data_size > SIZE_MAX - kind_size)
+    if(effect->data_size > SIZE_MAX - kind_size)
     {
         P101_ERROR_RAISE_USER(err, "FSM effect size is not representable", P101_FSM_ERROR_EFFECT);
         goto p101_single_exit_;
