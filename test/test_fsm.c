@@ -992,8 +992,8 @@ static void test_transactional_effect_batch(void)
     target.context = &context;
 
     fixture_create(&fixture, "committed-effect", committed, 1U, NULL);
-    batch      = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
-    batch_sink = p101_fsm_effect_batch_sink(batch);
+    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    p101_fsm_effect_batch_sink(batch, &batch_sink);
     EXPECT(batch != NULL);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_EXITED);
     EXPECT(context.effects == 0);
@@ -1009,8 +1009,8 @@ static void test_transactional_effect_batch(void)
 
     memset(&context, 0, sizeof(context));
     fixture_create(&fixture, "discarded-effect", paused, 1U, NULL);
-    batch      = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
-    batch_sink = p101_fsm_effect_batch_sink(batch);
+    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    p101_fsm_effect_batch_sink(batch, &batch_sink);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_PAUSED);
     EXPECT(p101_fsm_effect_batch_count(batch) == 1U);
     EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, &result, &target) == 0);
@@ -1020,8 +1020,8 @@ static void test_transactional_effect_batch(void)
     fixture_destroy(&fixture);
 
     fixture_create(&fixture, "effect-capacity", committed, 1U, NULL);
-    batch      = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 4U);
-    batch_sink = p101_fsm_effect_batch_sink(batch);
+    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 4U);
+    p101_fsm_effect_batch_sink(batch, &batch_sink);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_REFUSED);
     EXPECT(result.refusal == P101_FSM_REFUSAL_EFFECT_CAPACITY);
     EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
@@ -1045,7 +1045,7 @@ static void test_effect_batch_validation(void)
     EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
     p101_error_reset(fixture.fsm_err);
 
-    sink = p101_fsm_effect_batch_sink(NULL);
+    p101_fsm_effect_batch_sink(NULL, &sink);
     EXPECT(sink.handle == NULL);
     EXPECT(sink.context == NULL);
     EXPECT(p101_fsm_effect_batch_count(NULL) == 0U);
@@ -1056,6 +1056,7 @@ static void test_effect_batch_validation(void)
 
     batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 32U);
     EXPECT(batch != NULL);
+    p101_fsm_effect_batch_sink(batch, NULL);
     EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, NULL, &sink) == -1);
     EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
     p101_error_reset(fixture.fsm_err);

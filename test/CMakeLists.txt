@@ -93,6 +93,12 @@ target_compile_options(test_fsm PRIVATE ${P101_TEST_COVERAGE_FLAGS})
 target_link_options(test_fsm PRIVATE ${P101_TEST_COVERAGE_FLAGS})
 add_test(NAME test_fsm COMMAND test_fsm)
 
+add_executable(test_fault_wrappers test_fault_wrappers.c)
+target_link_libraries(test_fault_wrappers PRIVATE p101_fsm_under_test)
+target_compile_options(test_fault_wrappers PRIVATE ${P101_TEST_COVERAGE_FLAGS})
+target_link_options(test_fault_wrappers PRIVATE ${P101_TEST_COVERAGE_FLAGS})
+add_test(NAME test_fault_wrappers COMMAND test_fault_wrappers)
+
 add_executable(test_cpp_linkage test_cpp_linkage.cpp)
 target_link_libraries(test_cpp_linkage PRIVATE p101_fsm_under_test)
 target_compile_options(test_cpp_linkage PRIVATE ${P101_TEST_COVERAGE_FLAGS})

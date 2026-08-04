@@ -18,6 +18,7 @@
 #include "p101_fsm/fsm.h"
 #include <p101_c/p101_stdlib.h>
 #include <p101_c/p101_string.h>
+#include <p101_env/wrapper.h>
 #include <stdint.h>
 
 struct stored_effect
@@ -45,6 +46,7 @@ struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env
     struct p101_fsm_effect_batch *batch;
 
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN(env, err, batch, NULL);
     batch = NULL;
     if(maximum_effects == 0U || maximum_bytes == 0U || maximum_effects > SIZE_MAX / sizeof(*batch->effects))
     {
@@ -70,7 +72,7 @@ struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env
     batch->maximum_bytes   = maximum_bytes;
 
 done:
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
     return batch;
 }
 
@@ -87,14 +89,14 @@ void p101_fsm_effect_batch_destroy(const struct p101_env *env, struct p101_fsm_e
     P101_TRACE_EXIT(env);
 }
 
-struct p101_fsm_effect_sink p101_fsm_effect_batch_sink(struct p101_fsm_effect_batch *batch)
+void p101_fsm_effect_batch_sink(struct p101_fsm_effect_batch *batch, struct p101_fsm_effect_sink *sink)
 {
-    struct p101_fsm_effect_sink sink;
-
-    batch_reset(batch);
-    sink.handle  = batch == NULL ? NULL : batch_effect_handler;
-    sink.context = batch;
-    return sink;
+    if(sink != NULL)
+    {
+        batch_reset(batch);
+        sink->handle  = batch == NULL ? NULL : batch_effect_handler;
+        sink->context = batch;
+    }
 }
 
 size_t p101_fsm_effect_batch_count(const struct p101_fsm_effect_batch *batch)
@@ -108,6 +110,7 @@ int p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_er
     int return_value;
 
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN(env, err, return_value, -1);
     return_value = -1;
     if(batch == NULL || result == NULL || target == NULL || target->handle == NULL)
     {
@@ -137,7 +140,7 @@ int p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_er
 
 done:
     batch_reset(batch);
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
     return return_value;
 }
 
@@ -152,19 +155,19 @@ static void batch_effect_handler(const struct p101_env *env, struct p101_error *
     if(batch == NULL || effect == NULL || effect->kind == NULL || (effect->data == NULL && effect->data_size != 0U))
     {
         P101_ERROR_RAISE_USER(err, "Invalid staged FSM effect", P101_FSM_ERROR_EFFECT);
-        return;
+        goto p101_single_exit_;
     }
     kind_size = p101_strlen(env, effect->kind) + 1U;
     if(kind_size == 0U || effect->data_size > SIZE_MAX - kind_size)
     {
         P101_ERROR_RAISE_USER(err, "FSM effect size is not representable", P101_FSM_ERROR_EFFECT);
-        return;
+        goto p101_single_exit_;
     }
     required = kind_size + effect->data_size;
     if(batch->effect_count >= batch->maximum_effects || required > batch->maximum_bytes - batch->byte_count)
     {
         P101_ERROR_RAISE_USER(err, "FSM effect batch capacity exceeded", P101_FSM_ERROR_EFFECT_CAPACITY);
-        return;
+        goto p101_single_exit_;
     }
 
     stored              = &batch->effects[batch->effect_count];
@@ -179,6 +182,9 @@ static void batch_effect_handler(const struct p101_env *env, struct p101_error *
         batch->byte_count += effect->data_size;
     }
     batch->effect_count++;
+
+p101_single_exit_:
+    return;
 }
 
 static void batch_reset(struct p101_fsm_effect_batch *batch)

@@ -19,6 +19,7 @@
 #include <p101_c/p101_stdio.h>
 #include <p101_c/p101_stdlib.h>
 #include <p101_c/p101_string.h>
+#include <p101_env/wrapper.h>
 #include <p101_text/text.h>
 #include <stdint.h>
 
@@ -87,6 +88,7 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     p101_fsm_state_t                 initial_state;
 
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN(env, err, info, NULL);
     target_env          = fsm_env == NULL ? env : fsm_env;
     target_err          = fsm_err == NULL ? err : fsm_err;
     info                = NULL;
@@ -139,7 +141,7 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     info->bad_change_state_handler = handler == NULL ? p101_fsm_info_default_bad_change_state_handler : handler;
 
 done:
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
     return info;
 }
 
@@ -149,6 +151,7 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_error *fsm_er
     struct p101_fsm_info  *info;
 
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN_VOID(env, fsm_err);
     if(pinfo == NULL || *pinfo == NULL)
     {
         goto done;
@@ -168,7 +171,7 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_error *fsm_er
     *pinfo = NULL;
 
 done:
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
 }
 
 const char *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info)
@@ -193,11 +196,17 @@ size_t p101_fsm_info_get_step_sequence(const struct p101_fsm_info *info)
 
 bool p101_fsm_info_is_terminal(const struct p101_fsm_info *info)
 {
+    bool p101_single_result_;
     if(info == NULL)
     {
-        return false;
+        p101_single_result_ = false;
+        goto p101_single_exit_;
     }
-    return info->terminal;
+    p101_single_result_ = info->terminal;
+    goto p101_single_exit_;
+
+p101_single_exit_:
+    return p101_single_result_;
 }
 
 void p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier)
@@ -268,6 +277,7 @@ void p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, 
     struct p101_error *target_err;
 
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN_VOID(env, err);
     (void)sink;
     target_err = err == NULL && info != NULL ? info->fsm_err : err;
     p101_fsm_decide_exit(decision);
@@ -275,28 +285,31 @@ void p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, 
     {
         P101_ERROR_RAISE_USER_PRINTF(target_err, P101_FSM_ERROR_UNKNOWN_TRANSITION, "Unknown FSM state transition: %d -> %d", from_state_id, to_state_id);
     }
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
 }
 
 void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
 {
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN_VOID(env, err);
     (void)p101_printf(env, err, "%s: refused state transition %d -> %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id);
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
 }
 
 void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
 {
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN_VOID(env, err);
     (void)p101_printf(env, err, "%s: will attempt state transition %d -> %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id);
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
 }
 
 void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id)
 {
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN_VOID(env, err);
     (void)p101_printf(env, err, "%s: completed state transition %d -> %d; next state %d\n", fsm_info_name_or_default(info), from_state_id, to_state_id, next_state_id);
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
 }
 
 void p101_fsm_decide_transition(struct p101_fsm_decision *decision, p101_fsm_state_t next_state)
@@ -331,6 +344,7 @@ void p101_fsm_emit_effect(const struct p101_env *env, struct p101_error *err, st
     struct p101_fsm_effect effect;
 
     P101_TRACE(env);
+    P101_WRAPPER_FAULT_RETURN_VOID(env, err);
     if(sink == NULL || sink->handle == NULL)
     {
         goto done;
@@ -347,11 +361,12 @@ void p101_fsm_emit_effect(const struct p101_env *env, struct p101_error *err, st
     sink->handle(env, err, sink->context, &effect);
 
 done:
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
 }
 
 p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_step_result *result)
 {
+    p101_fsm_step_status     p101_single_result_;
     const struct p101_env   *env;
     struct p101_error       *err;
     p101_fsm_state_func      perform;
@@ -361,7 +376,8 @@ p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct
     fsm_prepare_result(result);
     if(info == NULL)
     {
-        return P101_FSM_STEP_ERROR;
+        p101_single_result_ = P101_FSM_STEP_ERROR;
+        goto p101_single_exit_;
     }
 
     env     = info->fsm_env;
@@ -372,7 +388,8 @@ p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct
     {
         P101_ERROR_RAISE_USER(err, "FSM step result cannot be NULL", P101_FSM_ERROR_INVALID_ARGUMENT);
         P101_TRACE_EXIT(env);
-        return P101_FSM_STEP_ERROR;
+        p101_single_result_ = P101_FSM_STEP_ERROR;
+        goto p101_single_exit_;
     }
 
     if(info->sequence == SIZE_MAX)
@@ -568,7 +585,11 @@ p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct
 done:
     fsm_complete_step(info, result, started);
     P101_TRACE_EXIT(env);
-    return result->status;
+    p101_single_result_ = result->status;
+    goto p101_single_exit_;
+
+p101_single_exit_:
+    return p101_single_result_;
 }
 
 p101_fsm_run_result p101_fsm_run(struct p101_fsm_info *info, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_step_result *last_result)
@@ -634,11 +655,11 @@ done:
 void p101_fsm_exit_immediately(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     P101_TRACE(env);
-    (void)err;
+    P101_WRAPPER_FAULT_RETURN_VOID(env, err);
     (void)arg;
     (void)sink;
     p101_fsm_decide_exit(decision);
-    P101_TRACE_EXIT(env);
+    P101_WRAPPER_DONE(env);
 }
 
 static void fsm_complete_step(struct p101_fsm_info *info, struct p101_fsm_step_result *result, bool started)
@@ -701,6 +722,7 @@ static size_t fsm_transition_hash(p101_fsm_state_t from_id, p101_fsm_state_t to_
 
 static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_t *initial_state)
 {
+    struct p101_fsm_transition_slot *p101_single_result_;
     struct p101_fsm_transition_slot *slots;
     size_t                           initial_count;
 
@@ -709,7 +731,8 @@ static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p
     {
         P101_ERROR_RAISE_USER(err, "FSM transition table cannot be empty", P101_FSM_ERROR_INVALID_TRANSITION_TABLE);
         P101_TRACE_EXIT(env);
-        return NULL;
+        p101_single_result_ = NULL;
+        goto p101_single_exit_;
     }
 
     *capacity = fsm_transition_map_capacity(transition_count);
@@ -717,13 +740,15 @@ static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p
     {
         P101_ERROR_RAISE_USER(err, "FSM transition table is too large", P101_FSM_ERROR_INVALID_TRANSITION_TABLE);
         P101_TRACE_EXIT(env);
-        return NULL;
+        p101_single_result_ = NULL;
+        goto p101_single_exit_;
     }
     slots = (struct p101_fsm_transition_slot *)p101_calloc(env, err, *capacity, sizeof(*slots));
     if(slots == NULL)
     {
         P101_TRACE_EXIT(env);
-        return NULL;
+        p101_single_result_ = NULL;
+        goto p101_single_exit_;
     }
 
     initial_count = 0U;
@@ -753,16 +778,22 @@ static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p
     }
 
     P101_TRACE_EXIT(env);
-    return slots;
+    p101_single_result_ = slots;
+    goto p101_single_exit_;
 
 invalid:
     p101_free(env, slots);
     P101_TRACE_EXIT(env);
-    return NULL;
+    p101_single_result_ = NULL;
+    goto p101_single_exit_;
+
+p101_single_exit_:
+    return p101_single_result_;
 }
 
 static size_t fsm_transition_map_capacity(size_t transition_count)
 {
+    size_t p101_single_result_;
     size_t capacity;
 
     capacity = FSM_TRANSITION_MIN_CAPACITY;
@@ -770,15 +801,21 @@ static size_t fsm_transition_map_capacity(size_t transition_count)
     {
         if(capacity > SIZE_MAX / 2U)
         {
-            return 0U;
+            p101_single_result_ = 0U;
+            goto p101_single_exit_;
         }
         capacity *= 2U;
     }
-    return capacity;
+    p101_single_result_ = capacity;
+    goto p101_single_exit_;
+
+p101_single_exit_:
+    return p101_single_result_;
 }
 
 static int fsm_transition_map_insert(struct p101_fsm_transition_slot slots[], size_t capacity, const struct p101_fsm_transition *transition)
 {
+    int    p101_single_result_;
     size_t index;
 
     index = fsm_transition_hash(transition->from_id, transition->to_id) & (capacity - 1U);
@@ -788,24 +825,31 @@ static int fsm_transition_map_insert(struct p101_fsm_transition_slot slots[], si
 
         if(!slot->occupied)
         {
-            slot->from_id  = transition->from_id;
-            slot->to_id    = transition->to_id;
-            slot->perform  = transition->perform;
-            slot->occupied = true;
-            return 1;
+            slot->from_id       = transition->from_id;
+            slot->to_id         = transition->to_id;
+            slot->perform       = transition->perform;
+            slot->occupied      = true;
+            p101_single_result_ = 1;
+            goto p101_single_exit_;
         }
         if(slot->from_id == transition->from_id && slot->to_id == transition->to_id)
         {
-            return 0;
+            p101_single_result_ = 0;
+            goto p101_single_exit_;
         }
         index = (index + 1U) & (capacity - 1U);
     }
-    return 0;
+    p101_single_result_ = 0;
+    goto p101_single_exit_;
+
+p101_single_exit_:
+    return p101_single_result_;
 }
 
 static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id, size_t *probe_count)
 {
-    size_t index;
+    const struct p101_fsm_transition_slot *p101_single_result_;
+    size_t                                 index;
 
     if(probe_count != NULL)
     {
@@ -822,15 +866,21 @@ static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const st
         }
         if(!slot->occupied)
         {
-            return NULL;
+            p101_single_result_ = NULL;
+            goto p101_single_exit_;
         }
         if(slot->from_id == from_id && slot->to_id == to_id)
         {
-            return slot;
+            p101_single_result_ = slot;
+            goto p101_single_exit_;
         }
         index = (index + 1U) & (info->transition_capacity - 1U);
     }
-    return NULL;
+    p101_single_result_ = NULL;
+    goto p101_single_exit_;
+
+p101_single_exit_:
+    return p101_single_result_;
 }
 
 #ifdef P101_FSM_TESTING

@@ -164,16 +164,17 @@ extern "C"
 
     /*
      * A bounded batch stages effect kind strings and payload bytes without
-     * allocating during exactly one step. Calling sink() starts a fresh batch.
-     * After step returns, finish_step() delivers the batch only for a committed
-     * transition or exit and otherwise discards it. Do not pass a batch sink
-     * to p101_fsm_run(), because run spans multiple step transactions.
-     * Delivery itself is external and cannot be rolled back if its handler
-     * fails.
+     * allocating during exactly one step. Calling
+     * p101_fsm_effect_batch_sink() fills caller-owned sink storage and starts a
+     * fresh batch. After step returns, finish_step() delivers the batch only
+     * for a committed transition or exit and otherwise discards it. Do not
+     * pass a batch sink to p101_fsm_run(), because run spans multiple step
+     * transactions. Delivery itself is external and cannot be rolled back if
+     * its handler fails.
      */
     struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env *env, struct p101_error *err, size_t maximum_effects, size_t maximum_bytes) P101_ATTR_MALLOC P101_ATTR_WARN_UNUSED_RESULT;
     void                          p101_fsm_effect_batch_destroy(const struct p101_env *env, struct p101_fsm_effect_batch **batch);
-    struct p101_fsm_effect_sink   p101_fsm_effect_batch_sink(struct p101_fsm_effect_batch *batch);
+    void                          p101_fsm_effect_batch_sink(struct p101_fsm_effect_batch *batch, struct p101_fsm_effect_sink *sink);
     size_t                        p101_fsm_effect_batch_count(const struct p101_fsm_effect_batch *batch);
     int                           p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_result *result, struct p101_fsm_effect_sink *target);
 
