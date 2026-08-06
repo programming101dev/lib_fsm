@@ -428,12 +428,22 @@ static void destroying_step_observer(const struct p101_env *env, const struct p1
     p101_fsm_info_destroy(env, context->fsm_err, context->fsm_pointer);
 }
 
+static bool trace_is_fsm_implementation(const char *file_name)
+{
+    /*
+     * Runtime trace records do not carry declaration USRs.  Source origin is
+     * therefore the narrow lexical identity available here; function names
+     * are deliberately ignored.
+     */
+    return strstr(file_name, "/lib_fsm/src/") != NULL || strncmp(file_name, "src/", sizeof("src/") - 1U) == 0;
+}
+
 static void trace_enter(const struct p101_env *env, const char *file_name, const char *function_name, int line_number)
 {
     (void)env;
-    (void)file_name;
+    (void)function_name;
     (void)line_number;
-    if(strncmp(function_name, "p101_fsm_", 9U) == 0 || strncmp(function_name, "fsm_", 4U) == 0)
+    if(trace_is_fsm_implementation(file_name))
     {
         trace_entries++;
     }
@@ -442,13 +452,15 @@ static void trace_enter(const struct p101_env *env, const char *file_name, const
 static void trace_exit(const struct p101_env *env, const char *file_name, const char *function_name, int line_number)
 {
     (void)env;
-    (void)file_name;
+    (void)function_name;
     (void)line_number;
-    if(strncmp(function_name, "p101_fsm_", 9U) == 0 || strncmp(function_name, "fsm_", 4U) == 0)
+    if(trace_is_fsm_implementation(file_name))
     {
         trace_exits++;
     }
 }
+
+P101_ATTR_SEMANTIC_ROLE("p101:boundary-case:boundary:fsm-transition:identity_mismatch")
 
 static void test_create_and_bound_table(void)
 {
@@ -567,6 +579,8 @@ static void test_invalid_create(void)
     fixture_destroy(&fixture);
 }
 
+P101_ATTR_SEMANTIC_ROLE("p101:boundary-case:boundary:fsm-transition:resource_limit")
+
 static void test_create_error_paths(void)
 {
     struct fixture        fixture;
@@ -626,6 +640,8 @@ static void test_create_error_paths(void)
     EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_ERRNO, ENOMEM));
     fixture_destroy(&fixture);
 }
+
+P101_ATTR_SEMANTIC_ROLE("p101:boundary-case:boundary:fsm-transition:clean")
 
 static void test_step_commit_and_terminal_result(void)
 {
@@ -718,6 +734,8 @@ static void test_errors_do_not_commit(void)
     EXPECT(p101_error_has_error(fixture.fsm_err));
     fixture_destroy(&fixture);
 }
+
+P101_ATTR_SEMANTIC_ROLE("p101:boundary-case:boundary:fsm-transition:typed_refusal")
 
 static void test_typed_refusals(void)
 {
@@ -835,6 +853,8 @@ static void test_redirect_is_one_step(void)
     EXPECT(result.refusal == P101_FSM_REFUSAL_REDIRECT_CYCLE);
     fixture_destroy(&fixture);
 }
+
+P101_ATTR_SEMANTIC_ROLE("p101:boundary-case:boundary:fsm-transition:binding_swap")
 
 static void test_run_is_step_loop(void)
 {

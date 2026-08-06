@@ -44,6 +44,9 @@ static void batch_reset(struct p101_fsm_effect_batch *batch);
 struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env *env, struct p101_error *err, size_t maximum_effects, size_t maximum_bytes)
 {
     struct p101_fsm_effect_batch *batch;
+    void                         *batch_storage;
+    void                         *effect_storage;
+    void                         *byte_storage;
 
     P101_TRACE(env);
     P101_WRAPPER_FAULT_RETURN(env, err, batch, NULL);
@@ -53,13 +56,16 @@ struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env
         P101_ERROR_RAISE_USER(err, "Invalid FSM effect-batch capacity", P101_FSM_ERROR_EFFECT);
         goto done;
     }
-    batch = (struct p101_fsm_effect_batch *)p101_calloc(env, err, 1U, sizeof(*batch));
+    batch_storage = p101_calloc(env, err, 1U, sizeof(*batch));
+    batch         = (struct p101_fsm_effect_batch *)batch_storage;
     if(batch == NULL)
     {
         goto done;
     }
-    batch->effects = (struct stored_effect *)p101_calloc(env, err, maximum_effects, sizeof(*batch->effects));
-    batch->bytes   = (unsigned char *)p101_calloc(env, err, maximum_bytes, sizeof(*batch->bytes));
+    effect_storage = p101_calloc(env, err, maximum_effects, sizeof(*batch->effects));
+    byte_storage   = p101_calloc(env, err, maximum_bytes, sizeof(*batch->bytes));
+    batch->effects = (struct stored_effect *)effect_storage;
+    batch->bytes   = (unsigned char *)byte_storage;
     if(batch->effects == NULL || batch->bytes == NULL)
     {
         p101_free(env, batch->bytes);
@@ -106,8 +112,9 @@ size_t p101_fsm_effect_batch_count(const struct p101_fsm_effect_batch *batch)
 
 int p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_result *result, struct p101_fsm_effect_sink *target)
 {
-    int deliver;
-    int return_value;
+    int  deliver;
+    int  return_value;
+    bool error_present;
 
     P101_TRACE(env);
     P101_WRAPPER_FAULT_RETURN(env, err, return_value, -1);
@@ -130,7 +137,8 @@ int p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_er
             effect.data      = stored->data_size == 0U ? NULL : &batch->bytes[stored->data_offset];
             effect.data_size = stored->data_size;
             target->handle(env, err, target->context, &effect);
-            if(p101_error_has_error(err))
+            error_present = p101_error_has_error(err);
+            if(error_present)
             {
                 goto done;
             }
@@ -147,6 +155,7 @@ done:
 static void batch_effect_handler(const struct p101_env *env, struct p101_error *err, void *context, const struct p101_fsm_effect *effect)
 {
     struct p101_fsm_effect_batch *batch;
+    size_t                        kind_length;
     size_t                        kind_size;
     size_t                        required;
     struct stored_effect         *stored;
@@ -157,7 +166,8 @@ static void batch_effect_handler(const struct p101_env *env, struct p101_error *
         P101_ERROR_RAISE_USER(err, "Invalid staged FSM effect", P101_FSM_ERROR_EFFECT);
         goto p101_single_exit_;
     }
-    kind_size = p101_strlen(env, effect->kind) + 1U;
+    kind_length = p101_strlen(env, effect->kind);
+    kind_size   = kind_length + 1U;
     if(effect->data_size > SIZE_MAX - kind_size)
     {
         P101_ERROR_RAISE_USER(err, "FSM effect size is not representable", P101_FSM_ERROR_EFFECT);
