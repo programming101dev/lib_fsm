@@ -7,6 +7,7 @@
 #include <ftw.h>
 #include <limits.h>
 #include <math.h>
+#include <netinet/in.h>
 #include <p101_env/env.h>
 #include <p101_error/error.h>
 #include <p101_fsm/errors.h>
@@ -90,10 +91,10 @@ static int    native_child_status = EXIT_SUCCESS;
 #define P101_NATIVE_FORMAT_PID_PATH_OR_SKIP(buffer, format)                                                                                                                                                                                                        \
     do                                                                                                                                                                                                                                                             \
     {                                                                                                                                                                                                                                                              \
-        int p101_format_length_;                                                                                                                                                                                                                                   \
+        bool p101_format_ok_;                                                                                                                                                                                                                                      \
                                                                                                                                                                                                                                                                    \
-        p101_format_length_ = snprintf((buffer), sizeof(buffer), (format), (long)getpid());                                                                                                                                                                        \
-        if(p101_format_length_ < 0 || (size_t)p101_format_length_ >= sizeof(buffer))                                                                                                                                                                               \
+        p101_format_ok_ = native_format_pid_path((buffer), sizeof(buffer), (format));                                                                                                                                                                              \
+        if(!p101_format_ok_)                                                                                                                                                                                                                                       \
         {                                                                                                                                                                                                                                                          \
             fprintf(stderr, "native setup failed: path formatting\n");                                                                                                                                                                                             \
             native_child_status = 77;                                                                                                                                                                                                                              \
