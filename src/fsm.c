@@ -765,7 +765,7 @@ static size_t fsm_transition_hash(p101_fsm_state_t from_id, p101_fsm_state_t to_
     hash ^= hash >> FSM_HASH_MIX_SHIFT_2;
     hash *= UINT64_C(0x94d049bb133111eb);
     hash ^= hash >> FSM_HASH_MIX_SHIFT_3;
-    return (size_t)hash;
+    return hash;
 }
 
 static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_t *initial_state)
