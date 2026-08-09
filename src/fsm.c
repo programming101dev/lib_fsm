@@ -41,24 +41,24 @@ enum
 };
 
 static void                fsm_complete_step(struct p101_fsm_info *info, struct p101_fsm_step_result *result, bool started);
-static int                 fsm_has_error(const struct p101_error *app_err, const struct p101_error *fsm_err);
+static bool                fsm_has_error(const struct p101_error *app_err, const struct p101_error *fsm_err);
 static const char         *fsm_info_name_or_default(const struct p101_fsm_info *info);
 static void                fsm_prepare_result(struct p101_fsm_step_result *result);
-static p101_fsm_state_func fsm_transition(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id);
-static size_t              fsm_transition_hash(p101_fsm_state_t from_id, p101_fsm_state_t to_id);
+static p101_fsm_state_func fsm_transition(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id);
+static size_t              fsm_transition_hash(p101_fsm_state_id from_id, p101_fsm_state_id to_id);
 
 struct p101_fsm_transition_slot
 {
-    p101_fsm_state_t    from_id;
-    p101_fsm_state_t    to_id;
+    p101_fsm_state_id   from_id;
+    p101_fsm_state_id   to_id;
     p101_fsm_state_func perform;
     bool                occupied;
 };
 
-static struct p101_fsm_transition_slot       *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_t *initial_state);
+static struct p101_fsm_transition_slot       *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_id *initial_state);
 static size_t                                 fsm_transition_map_capacity(size_t transition_count);
 static int                                    fsm_transition_map_insert(struct p101_fsm_transition_slot slots[], size_t capacity, const struct p101_fsm_transition *transition);
-static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id, size_t *probe_count);
+static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id, size_t *probe_count);
 
 struct p101_fsm_info
 {
@@ -70,8 +70,8 @@ struct p101_fsm_info
     struct p101_fsm_transition_slot              *transition_slots;
     size_t                                        transition_capacity;
     size_t                                        transition_count;
-    p101_fsm_state_t                              from_state_id;
-    p101_fsm_state_t                              current_state_id;
+    p101_fsm_state_id                             from_state_id;
+    p101_fsm_state_id                             current_state_id;
     size_t                                        sequence;
     size_t                                        redirect_count;
     p101_fsm_info_will_change_state_notifier_func will_change_state_notifier;
@@ -93,7 +93,7 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     struct p101_fsm_info            *info;
     struct p101_fsm_transition_slot *transition_slots;
     size_t                           transition_capacity;
-    p101_fsm_state_t                 initial_state;
+    p101_fsm_state_id                initial_state;
     bool                             primary_error_present;
     bool                             target_error_present;
     void                            *info_storage;
@@ -198,94 +198,133 @@ const char *p101_fsm_info_get_name(const struct p101_env *env, const struct p101
     return name;
 }
 
-p101_fsm_state_t p101_fsm_info_get_current_state(const struct p101_fsm_info *info)
+p101_fsm_state_id p101_fsm_info_get_current_state(const struct p101_env *env, const struct p101_fsm_info *info)
 {
-    return info == NULL ? P101_FSM_STATE_NONE : info->current_state_id;
+    p101_fsm_state_id state_id;
+
+    P101_TRACE(env);
+    state_id = info == NULL ? P101_FSM_STATE_NONE : info->current_state_id;
+    P101_TRACE_EXIT(env);
+    return state_id;
 }
 
-size_t p101_fsm_info_get_step_sequence(const struct p101_fsm_info *info)
+size_t p101_fsm_info_get_step_sequence(const struct p101_env *env, const struct p101_fsm_info *info)
 {
-    return info == NULL ? 0U : info->sequence;
+    size_t sequence;
+
+    P101_TRACE(env);
+    sequence = info == NULL ? 0U : info->sequence;
+    P101_TRACE_EXIT(env);
+    return sequence;
 }
 
-bool p101_fsm_info_is_terminal(const struct p101_fsm_info *info)
+bool p101_fsm_info_is_terminal(const struct p101_env *env, const struct p101_fsm_info *info)
 {
-    bool p101_single_result_;
-    if(info == NULL)
+    bool terminal;
+
+    P101_TRACE(env);
+    terminal = false;
+    if(info != NULL)
     {
-        p101_single_result_ = false;
-        goto p101_single_exit_;
+        terminal = info->terminal;
     }
-    p101_single_result_ = info->terminal;
-    goto p101_single_exit_;
-
-p101_single_exit_:
-    return p101_single_result_;
+    P101_TRACE_EXIT(env);
+    return terminal;
 }
 
-void p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier)
+void p101_fsm_info_set_will_change_state_notifier(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier)
 {
+    P101_TRACE(env);
     if(info != NULL)
     {
         info->will_change_state_notifier = notifier;
     }
+    P101_TRACE_EXIT(env);
 }
 
-void p101_fsm_info_set_did_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier)
+void p101_fsm_info_set_did_change_state_notifier(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier)
 {
+    P101_TRACE(env);
     if(info != NULL)
     {
         info->did_change_state_notifier = notifier;
     }
+    P101_TRACE_EXIT(env);
 }
 
-void p101_fsm_info_set_bad_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier)
+void p101_fsm_info_set_bad_change_state_notifier(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier)
 {
+    P101_TRACE(env);
     if(info != NULL)
     {
         info->bad_change_state_notifier = notifier;
     }
+    P101_TRACE_EXIT(env);
 }
 
-void p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler)
+void p101_fsm_info_set_bad_change_state_handler(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler)
 {
+    P101_TRACE(env);
     if(info != NULL)
     {
         info->bad_change_state_handler = handler == NULL ? p101_fsm_info_default_bad_change_state_handler : handler;
     }
+    P101_TRACE_EXIT(env);
 }
 
 // cppcheck-suppress funcArgNamesDifferentUnnamed
-void p101_fsm_info_set_step_observer(struct p101_fsm_info *info, p101_fsm_step_observer_func observer, void *user_data)
+void p101_fsm_info_set_step_observer(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_step_observer_func observer, void *user_data)
 {
+    P101_TRACE(env);
     if(info != NULL)
     {
         info->step_observer      = observer;
         info->step_observer_data = user_data;
     }
+    P101_TRACE_EXIT(env);
 }
 
-p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_state_notifier(const struct p101_fsm_info *info)
+p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_state_notifier(const struct p101_env *env, const struct p101_fsm_info *info)
 {
-    return info == NULL ? NULL : info->will_change_state_notifier;
+    p101_fsm_info_will_change_state_notifier_func notifier;
+
+    P101_TRACE(env);
+    notifier = info == NULL ? NULL : info->will_change_state_notifier;
+    P101_TRACE_EXIT(env);
+    return notifier;
 }
 
-p101_fsm_info_did_change_state_notifier_func p101_fsm_info_get_did_change_state_notifier(const struct p101_fsm_info *info)
+p101_fsm_info_did_change_state_notifier_func p101_fsm_info_get_did_change_state_notifier(const struct p101_env *env, const struct p101_fsm_info *info)
 {
-    return info == NULL ? NULL : info->did_change_state_notifier;
+    p101_fsm_info_did_change_state_notifier_func notifier;
+
+    P101_TRACE(env);
+    notifier = info == NULL ? NULL : info->did_change_state_notifier;
+    P101_TRACE_EXIT(env);
+    return notifier;
 }
 
-p101_fsm_info_bad_change_state_notifier_func p101_fsm_info_get_bad_change_state_notifier(const struct p101_fsm_info *info)
+p101_fsm_info_bad_change_state_notifier_func p101_fsm_info_get_bad_change_state_notifier(const struct p101_env *env, const struct p101_fsm_info *info)
 {
-    return info == NULL ? NULL : info->bad_change_state_notifier;
+    p101_fsm_info_bad_change_state_notifier_func notifier;
+
+    P101_TRACE(env);
+    notifier = info == NULL ? NULL : info->bad_change_state_notifier;
+    P101_TRACE_EXIT(env);
+    return notifier;
 }
 
-p101_fsm_info_bad_change_state_handler_func p101_fsm_info_get_bad_change_state_handler(const struct p101_fsm_info *info)
+p101_fsm_info_bad_change_state_handler_func p101_fsm_info_get_bad_change_state_handler(const struct p101_env *env, const struct p101_fsm_info *info)
 {
-    return info == NULL ? NULL : info->bad_change_state_handler;
+    p101_fsm_info_bad_change_state_handler_func handler;
+
+    P101_TRACE(env);
+    handler = info == NULL ? NULL : info->bad_change_state_handler;
+    P101_TRACE_EXIT(env);
+    return handler;
 }
 
-void p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink,
+void p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink,
                                                     struct p101_fsm_decision *decision)
 {
     struct p101_error *target_err;
@@ -302,7 +341,7 @@ void p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, 
     P101_WRAPPER_DONE(env);
 }
 
-void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
+void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id)
 {
     const char *name;
     int         written;
@@ -315,7 +354,7 @@ void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env,
     P101_WRAPPER_DONE(env);
 }
 
-void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
+void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id)
 {
     const char *name;
     int         written;
@@ -328,7 +367,7 @@ void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env
     P101_WRAPPER_DONE(env);
 }
 
-void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id)
+void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, p101_fsm_state_id next_state_id)
 {
     const char *name;
     int         written;
@@ -341,7 +380,7 @@ void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env,
     P101_WRAPPER_DONE(env);
 }
 
-void p101_fsm_decide_transition(struct p101_fsm_decision *decision, p101_fsm_state_t next_state)
+void p101_fsm_decide_transition(struct p101_fsm_decision *decision, p101_fsm_state_id next_state)
 {
     if(decision != NULL)
     {
@@ -401,7 +440,7 @@ p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct
     p101_fsm_state_func      perform;
     struct p101_fsm_decision decision;
     bool                     started;
-    int                      has_error;
+    bool                     has_error;
     bool                     app_effect_capacity_error;
     bool                     fsm_effect_capacity_error;
 
@@ -717,15 +756,20 @@ static void fsm_complete_step(struct p101_fsm_info *info, struct p101_fsm_step_r
     }
 }
 
-static int fsm_has_error(const struct p101_error *app_err, const struct p101_error *fsm_err)
+static bool fsm_has_error(const struct p101_error *app_err, const struct p101_error *fsm_err)
 {
-    int  result;
+    bool result;
     bool app_error_present;
     bool fsm_error_present;
 
     app_error_present = p101_error_has_error(app_err);
     fsm_error_present = p101_error_has_error(fsm_err);
-    result            = (app_error_present || fsm_error_present) ? 1 : 0;
+    result            = false;
+    if(app_error_present || fsm_error_present)
+    {
+        result = true;
+    }
+
     return result;
 }
 
@@ -747,7 +791,7 @@ static void fsm_prepare_result(struct p101_fsm_step_result *result)
     }
 }
 
-static p101_fsm_state_func fsm_transition(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id)
+static p101_fsm_state_func fsm_transition(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id)
 {
     const struct p101_fsm_transition_slot *slot;
 
@@ -755,20 +799,30 @@ static p101_fsm_state_func fsm_transition(const struct p101_fsm_info *info, p101
     return slot == NULL ? NULL : slot->perform;
 }
 
-static size_t fsm_transition_hash(p101_fsm_state_t from_id, p101_fsm_state_t to_id)
+static uint64_t fsm_wrapping_multiply(uint64_t left, uint64_t right)
+{
+    uint64_t product;
+    bool     overflowed;
+
+    overflowed = __builtin_mul_overflow(left, right, &product);
+    (void)overflowed;
+    return product;
+}
+
+static size_t fsm_transition_hash(p101_fsm_state_id from_id, p101_fsm_state_id to_id)
 {
     uint64_t hash;
 
     hash = ((uint64_t)(uint32_t)from_id << FSM_HASH_KEY_SHIFT) | (uint64_t)(uint32_t)to_id;
     hash ^= hash >> FSM_HASH_MIX_SHIFT_1;
-    hash *= UINT64_C(0xbf58476d1ce4e5b9);
+    hash = fsm_wrapping_multiply(hash, UINT64_C(0xbf58476d1ce4e5b9));
     hash ^= hash >> FSM_HASH_MIX_SHIFT_2;
-    hash *= UINT64_C(0x94d049bb133111eb);
+    hash = fsm_wrapping_multiply(hash, UINT64_C(0x94d049bb133111eb));
     hash ^= hash >> FSM_HASH_MIX_SHIFT_3;
     return hash;
 }
 
-static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_t *initial_state)
+static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_id *initial_state)
 {
     struct p101_fsm_transition_slot *p101_single_result_;
     struct p101_fsm_transition_slot *slots;
@@ -900,7 +954,7 @@ p101_single_exit_:
     return p101_single_result_;
 }
 
-static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id, size_t *probe_count)
+static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id, size_t *probe_count)
 {
     const struct p101_fsm_transition_slot *p101_single_result_;
     size_t                                 hash;
@@ -948,7 +1002,7 @@ void p101_fsm_test_set_step_sequence(struct p101_fsm_info *info, size_t sequence
     }
 }
 
-size_t p101_fsm_test_transition_probe_count(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id)
+size_t p101_fsm_test_transition_probe_count(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id)
 {
     size_t probe_count;
 

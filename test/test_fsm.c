@@ -35,7 +35,7 @@ struct callback_context
     int                         effects;
     int                         observations;
     size_t                      last_sequence;
-    p101_fsm_state_t            selected_state;
+    p101_fsm_state_id           selected_state;
     char                        effect_kind[16];
     int                         effect_value;
 };
@@ -47,18 +47,18 @@ struct fault_context
     int         seen;
 };
 
-static int              failures;
-static int              trace_entries;
-static int              trace_exits;
-static int              pause_calls;
-static int              will_calls;
-static int              did_calls;
-static int              bad_calls;
-static p101_fsm_state_t redirect_state;
-static int              redirect_calls;
+static int               failures;
+static int               trace_entries;
+static int               trace_exits;
+static int               pause_calls;
+static int               will_calls;
+static int               did_calls;
+static int               bad_calls;
+static p101_fsm_state_id redirect_state;
+static int               redirect_calls;
 
 void   p101_fsm_test_set_step_sequence(struct p101_fsm_info *info, size_t sequence);
-size_t p101_fsm_test_transition_probe_count(const struct p101_fsm_info *info, p101_fsm_state_t from_id, p101_fsm_state_t to_id);
+size_t p101_fsm_test_transition_probe_count(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id);
 
 #define EXPECT(condition)                                                                                                                                                                                                                                          \
     do                                                                                                                                                                                                                                                             \
@@ -241,7 +241,7 @@ static void state_effect_then_pause(const struct p101_env *env, struct p101_erro
     p101_fsm_decide_pause(decision);
 }
 
-static void redirect_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+static void redirect_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
@@ -252,7 +252,7 @@ static void redirect_handler(const struct p101_env *env, struct p101_error *err,
     p101_fsm_decide_transition(decision, redirect_state);
 }
 
-static void invalid_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+static void invalid_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
@@ -263,7 +263,7 @@ static void invalid_handler(const struct p101_env *env, struct p101_error *err, 
     (void)decision;
 }
 
-static void pause_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+static void pause_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
@@ -274,7 +274,7 @@ static void pause_handler(const struct p101_env *env, struct p101_error *err, co
     p101_fsm_decide_pause(decision);
 }
 
-static void exit_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+static void exit_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
@@ -285,7 +285,7 @@ static void exit_handler(const struct p101_env *env, struct p101_error *err, con
     p101_fsm_decide_exit(decision);
 }
 
-static void invalid_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+static void invalid_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
@@ -296,7 +296,7 @@ static void invalid_state_handler(const struct p101_env *env, struct p101_error 
     p101_fsm_decide_transition(decision, P101_FSM_INIT);
 }
 
-static void unknown_decision_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+static void unknown_decision_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
@@ -307,7 +307,8 @@ static void unknown_decision_handler(const struct p101_env *env, struct p101_err
     decision->kind = (p101_fsm_decision_kind)99;
 }
 
-static void redirect_until_limit_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision)
+static void redirect_until_limit_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink,
+                                         struct p101_fsm_decision *decision)
 {
     (void)env;
     (void)err;
@@ -319,7 +320,7 @@ static void redirect_until_limit_handler(const struct p101_env *env, struct p101
     p101_fsm_decide_transition(decision, STATE_C + redirect_calls);
 }
 
-static void will_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
+static void will_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id)
 {
     (void)env;
     (void)err;
@@ -329,7 +330,7 @@ static void will_notifier(const struct p101_env *env, struct p101_error *err, co
     will_calls++;
 }
 
-static void did_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id)
+static void did_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, p101_fsm_state_id next_state_id)
 {
     (void)env;
     (void)err;
@@ -340,7 +341,7 @@ static void did_notifier(const struct p101_env *env, struct p101_error *err, con
     did_calls++;
 }
 
-static void did_error_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id)
+static void did_error_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, p101_fsm_state_id next_state_id)
 {
     (void)env;
     (void)info;
@@ -350,7 +351,7 @@ static void did_error_notifier(const struct p101_env *env, struct p101_error *er
     P101_ERROR_RAISE_USER(err, "notifier error", P101_FSM_ERROR_INVALID_ARGUMENT);
 }
 
-static void will_error_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
+static void will_error_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id)
 {
     (void)env;
     (void)info;
@@ -359,7 +360,7 @@ static void will_error_notifier(const struct p101_env *env, struct p101_error *e
     P101_ERROR_RAISE_USER(err, "will notifier error", P101_FSM_ERROR_INVALID_ARGUMENT);
 }
 
-static void bad_error_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
+static void bad_error_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id)
 {
     (void)env;
     (void)info;
@@ -381,7 +382,7 @@ static int fault_injector(const struct p101_env *env, const char *call_name, voi
     return context->seen == context->occurrence ? ENOMEM : 0;
 }
 
-static void bad_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id)
+static void bad_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id)
 {
     (void)env;
     (void)err;
@@ -474,11 +475,11 @@ static void test_create_and_bound_table(void)
     fixture_create(&fixture, "unit-fsm", transitions, 1U, NULL);
     EXPECT(fixture.fsm != NULL);
     EXPECT(strcmp(p101_fsm_info_get_name(fixture.app_env, fixture.fsm), "unit-fsm") == 0);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     transitions[0].perform = NULL;
     EXPECT(p101_fsm_step(fixture.fsm, &context, NULL, &result) == P101_FSM_STEP_EXITED);
     EXPECT(context.calls == 1);
-    EXPECT(p101_fsm_info_is_terminal(fixture.fsm));
+    EXPECT(p101_fsm_info_is_terminal(fixture.app_env, fixture.fsm));
     fixture_destroy(&fixture);
 }
 
@@ -493,7 +494,7 @@ static void test_transition_hash_map(void)
         {STATE_A,       STATE_C,      state_exit       },
         {STATE_A,       STATE_SPARSE, state_exit       },
     };
-    static const p101_fsm_state_t targets[] = {STATE_B, STATE_C, STATE_SPARSE};
+    static const p101_fsm_state_id targets[] = {STATE_B, STATE_C, STATE_SPARSE};
 
     for(size_t i = 0U; i < sizeof(targets) / sizeof(targets[0]); i++)
     {
@@ -628,7 +629,7 @@ static void test_create_error_paths(void)
     EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_ERRNO, ENOMEM));
     fixture_destroy(&fixture);
 
-    fault = (struct fault_context){"strdup", 1, 0};
+    fault = (struct fault_context){"p101_strdup", 1, 0};
     fixture_create_with_fault(&fixture, &fault);
     EXPECT(fixture.fsm == NULL);
     EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_ERRNO, ENOMEM));
@@ -656,20 +657,20 @@ static void test_step_commit_and_terminal_result(void)
     EXPECT(result.attempted_state == STATE_A);
     EXPECT(result.next_state == STATE_B);
     EXPECT(result.refusal == P101_FSM_REFUSAL_NONE);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_B);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_B);
 
     EXPECT(p101_fsm_step(fixture.fsm, &context, NULL, &result) == P101_FSM_STEP_EXITED);
     EXPECT(result.sequence == 2U);
     EXPECT(result.from_state == STATE_A);
     EXPECT(result.attempted_state == STATE_B);
     EXPECT(result.next_state == P101_FSM_STATE_NONE);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_B);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_B);
 
     EXPECT(p101_fsm_step(fixture.fsm, &context, NULL, &result) == P101_FSM_STEP_EXITED);
     EXPECT(result.sequence == 3U);
     EXPECT(result.refusal == P101_FSM_REFUSAL_TERMINAL_MACHINE);
     EXPECT(context.calls == 2);
-    EXPECT(p101_fsm_info_get_step_sequence(fixture.fsm) == 3U);
+    EXPECT(p101_fsm_info_get_step_sequence(fixture.app_env, fixture.fsm) == 3U);
     fixture_destroy(&fixture);
 }
 
@@ -684,7 +685,7 @@ static void test_pause_does_not_commit(void)
     pause_calls = 0;
     fixture_create(&fixture, "pause", transitions, 1U, NULL);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_PAUSED);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_EXITED);
     EXPECT(pause_calls == 2);
     fixture_destroy(&fixture);
@@ -703,14 +704,14 @@ static void test_errors_do_not_commit(void)
 
     fixture_create(&fixture, "callback-error", callback_error, 1U, NULL);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_ERROR);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     EXPECT(p101_error_has_error(fixture.app_err));
     fixture_destroy(&fixture);
 
     fixture_create(&fixture, "notifier-error", notifier_error, 1U, NULL);
-    p101_fsm_info_set_did_change_state_notifier(fixture.fsm, did_error_notifier);
+    p101_fsm_info_set_did_change_state_notifier(fixture.app_env, fixture.fsm, did_error_notifier);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_ERROR);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     EXPECT(p101_error_has_error(fixture.fsm_err));
     fixture_destroy(&fixture);
 
@@ -721,16 +722,16 @@ static void test_errors_do_not_commit(void)
     },
                    1U,
                    NULL);
-    p101_fsm_info_set_did_change_state_notifier(fixture.fsm, did_error_notifier);
+    p101_fsm_info_set_did_change_state_notifier(fixture.app_env, fixture.fsm, did_error_notifier);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_ERROR);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     EXPECT(p101_error_has_error(fixture.fsm_err));
     fixture_destroy(&fixture);
 
     fixture_create(&fixture, "will-error", notifier_error, 1U, NULL);
-    p101_fsm_info_set_will_change_state_notifier(fixture.fsm, will_error_notifier);
+    p101_fsm_info_set_will_change_state_notifier(fixture.app_env, fixture.fsm, will_error_notifier);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_ERROR);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     EXPECT(p101_error_has_error(fixture.fsm_err));
     fixture_destroy(&fixture);
 }
@@ -766,7 +767,7 @@ static void test_typed_refusals(void)
     fixture_create(&fixture, "invalid-callback", invalid_callback, 1U, NULL);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_REFUSED);
     EXPECT(result.refusal == P101_FSM_REFUSAL_INVALID_CALLBACK_DECISION);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     fixture_destroy(&fixture);
 
     fixture_create(&fixture, "invalid-handler", unknown, 2U, invalid_handler);
@@ -786,7 +787,7 @@ static void test_typed_refusals(void)
     fixture_destroy(&fixture);
 
     fixture_create(&fixture, "bad-notifier-error", unknown, 2U, pause_handler);
-    p101_fsm_info_set_bad_change_state_notifier(fixture.fsm, bad_error_notifier);
+    p101_fsm_info_set_bad_change_state_notifier(fixture.app_env, fixture.fsm, bad_error_notifier);
     EXPECT(p101_fsm_step(fixture.fsm, &context, NULL, &result) == P101_FSM_STEP_TRANSITIONED);
     EXPECT(p101_fsm_step(fixture.fsm, &context, NULL, &result) == P101_FSM_STEP_ERROR);
     EXPECT(result.refusal == P101_FSM_REFUSAL_UNKNOWN_TRANSITION);
@@ -958,7 +959,7 @@ static void test_effects_and_step_observer(void)
     fixture_create(&fixture, "effects", transitions, 1U, NULL);
     sink.handle  = effect_handler;
     sink.context = &context;
-    p101_fsm_info_set_step_observer(fixture.fsm, step_observer, &context);
+    p101_fsm_info_set_step_observer(fixture.app_env, fixture.fsm, step_observer, &context);
     EXPECT(p101_fsm_step(fixture.fsm, &context, &sink, &result) == P101_FSM_STEP_EXITED);
     EXPECT(context.effects == 1);
     EXPECT(strcmp(context.effect_kind, "answer") == 0);
@@ -1044,7 +1045,7 @@ static void test_transactional_effect_batch(void)
     p101_fsm_effect_batch_sink(batch, &batch_sink);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_REFUSED);
     EXPECT(result.refusal == P101_FSM_REFUSAL_EFFECT_CAPACITY);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     EXPECT(p101_error_is_error(fixture.app_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT_CAPACITY));
     p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
     fixture_destroy(&fixture);
@@ -1094,8 +1095,8 @@ static void test_step_sequence_exhaustion(void)
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_REFUSED);
     EXPECT(result.sequence == SIZE_MAX);
     EXPECT(result.refusal == P101_FSM_REFUSAL_SEQUENCE_EXHAUSTED);
-    EXPECT(p101_fsm_info_get_step_sequence(fixture.fsm) == SIZE_MAX);
-    EXPECT(p101_fsm_info_get_current_state(fixture.fsm) == STATE_A);
+    EXPECT(p101_fsm_info_get_step_sequence(fixture.app_env, fixture.fsm) == SIZE_MAX);
+    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
     EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_SEQUENCE_EXHAUSTED));
     fixture_destroy(&fixture);
 }
@@ -1111,7 +1112,7 @@ static void test_step_observer_cannot_reenter(void)
 
     fixture_create(&fixture, "observer-reentry", transitions, 1U, NULL);
     context.fsm = fixture.fsm;
-    p101_fsm_info_set_step_observer(fixture.fsm, step_observer, &context);
+    p101_fsm_info_set_step_observer(fixture.app_env, fixture.fsm, step_observer, &context);
     EXPECT(p101_fsm_step(fixture.fsm, &context, NULL, &result) == P101_FSM_STEP_EXITED);
     EXPECT(context.observations == 1);
     EXPECT(context.nested_status == P101_FSM_STEP_REFUSED);
@@ -1123,7 +1124,7 @@ static void test_step_observer_cannot_reenter(void)
     fixture_create(&fixture, "observer-destroy", transitions, 1U, NULL);
     context.fsm_pointer = &fixture.fsm;
     context.fsm_err     = fixture.fsm_err;
-    p101_fsm_info_set_step_observer(fixture.fsm, destroying_step_observer, &context);
+    p101_fsm_info_set_step_observer(fixture.app_env, fixture.fsm, destroying_step_observer, &context);
     EXPECT(p101_fsm_step(fixture.fsm, &context, NULL, &result) == P101_FSM_STEP_EXITED);
     EXPECT(fixture.fsm != NULL);
     EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_REENTRANT_OPERATION));
@@ -1137,20 +1138,20 @@ static void test_configuration_and_null_api(void)
     struct p101_fsm_decision    decision;
 
     EXPECT(p101_fsm_info_get_name(NULL, NULL) == NULL);
-    EXPECT(p101_fsm_info_get_current_state(NULL) == P101_FSM_STATE_NONE);
-    EXPECT(p101_fsm_info_get_step_sequence(NULL) == 0U);
-    EXPECT(!p101_fsm_info_is_terminal(NULL));
+    EXPECT(p101_fsm_info_get_current_state(NULL, NULL) == P101_FSM_STATE_NONE);
+    EXPECT(p101_fsm_info_get_step_sequence(NULL, NULL) == 0U);
+    EXPECT(!p101_fsm_info_is_terminal(NULL, NULL));
     EXPECT(p101_fsm_step(NULL, NULL, NULL, &result) == P101_FSM_STEP_ERROR);
     EXPECT(p101_fsm_run(NULL, NULL, NULL, &result) == P101_FSM_RUN_ERROR);
-    p101_fsm_info_set_will_change_state_notifier(NULL, will_notifier);
-    p101_fsm_info_set_did_change_state_notifier(NULL, did_notifier);
-    p101_fsm_info_set_bad_change_state_notifier(NULL, bad_notifier);
-    p101_fsm_info_set_bad_change_state_handler(NULL, redirect_handler);
-    p101_fsm_info_set_step_observer(NULL, step_observer, NULL);
-    EXPECT(p101_fsm_info_get_will_change_state_notifier(NULL) == NULL);
-    EXPECT(p101_fsm_info_get_did_change_state_notifier(NULL) == NULL);
-    EXPECT(p101_fsm_info_get_bad_change_state_notifier(NULL) == NULL);
-    EXPECT(p101_fsm_info_get_bad_change_state_handler(NULL) == NULL);
+    p101_fsm_info_set_will_change_state_notifier(NULL, NULL, will_notifier);
+    p101_fsm_info_set_did_change_state_notifier(NULL, NULL, did_notifier);
+    p101_fsm_info_set_bad_change_state_notifier(NULL, NULL, bad_notifier);
+    p101_fsm_info_set_bad_change_state_handler(NULL, NULL, redirect_handler);
+    p101_fsm_info_set_step_observer(NULL, NULL, step_observer, NULL);
+    EXPECT(p101_fsm_info_get_will_change_state_notifier(NULL, NULL) == NULL);
+    EXPECT(p101_fsm_info_get_did_change_state_notifier(NULL, NULL) == NULL);
+    EXPECT(p101_fsm_info_get_bad_change_state_notifier(NULL, NULL) == NULL);
+    EXPECT(p101_fsm_info_get_bad_change_state_handler(NULL, NULL) == NULL);
     p101_fsm_decide_transition(NULL, STATE_A);
     p101_fsm_decide_pause(NULL);
     p101_fsm_decide_exit(NULL);
@@ -1161,17 +1162,17 @@ static void test_configuration_and_null_api(void)
     }
 
     fixture_create(&fixture, "configuration", basic_transitions, 2U, redirect_handler);
-    p101_fsm_info_set_will_change_state_notifier(fixture.fsm, will_notifier);
-    p101_fsm_info_set_did_change_state_notifier(fixture.fsm, did_notifier);
-    p101_fsm_info_set_bad_change_state_notifier(fixture.fsm, bad_notifier);
-    EXPECT(p101_fsm_info_get_will_change_state_notifier(fixture.fsm) == will_notifier);
-    EXPECT(p101_fsm_info_get_did_change_state_notifier(fixture.fsm) == did_notifier);
-    EXPECT(p101_fsm_info_get_bad_change_state_notifier(fixture.fsm) == bad_notifier);
-    EXPECT(p101_fsm_info_get_bad_change_state_handler(fixture.fsm) == redirect_handler);
-    p101_fsm_info_set_bad_change_state_handler(fixture.fsm, NULL);
-    EXPECT(p101_fsm_info_get_bad_change_state_handler(fixture.fsm) == p101_fsm_info_default_bad_change_state_handler);
-    p101_fsm_info_set_bad_change_state_handler(fixture.fsm, redirect_handler);
-    EXPECT(p101_fsm_info_get_bad_change_state_handler(fixture.fsm) == redirect_handler);
+    p101_fsm_info_set_will_change_state_notifier(fixture.app_env, fixture.fsm, will_notifier);
+    p101_fsm_info_set_did_change_state_notifier(fixture.app_env, fixture.fsm, did_notifier);
+    p101_fsm_info_set_bad_change_state_notifier(fixture.app_env, fixture.fsm, bad_notifier);
+    EXPECT(p101_fsm_info_get_will_change_state_notifier(fixture.app_env, fixture.fsm) == will_notifier);
+    EXPECT(p101_fsm_info_get_did_change_state_notifier(fixture.app_env, fixture.fsm) == did_notifier);
+    EXPECT(p101_fsm_info_get_bad_change_state_notifier(fixture.app_env, fixture.fsm) == bad_notifier);
+    EXPECT(p101_fsm_info_get_bad_change_state_handler(fixture.app_env, fixture.fsm) == redirect_handler);
+    p101_fsm_info_set_bad_change_state_handler(fixture.app_env, fixture.fsm, NULL);
+    EXPECT(p101_fsm_info_get_bad_change_state_handler(fixture.app_env, fixture.fsm) == p101_fsm_info_default_bad_change_state_handler);
+    p101_fsm_info_set_bad_change_state_handler(fixture.app_env, fixture.fsm, redirect_handler);
+    EXPECT(p101_fsm_info_get_bad_change_state_handler(fixture.app_env, fixture.fsm) == redirect_handler);
 
     decision.kind = P101_FSM_DECISION_INVALID;
     p101_fsm_info_default_bad_change_state_handler(NULL, NULL, NULL, STATE_A, STATE_B, NULL, &decision);
@@ -1190,7 +1191,7 @@ static void test_configuration_and_null_api(void)
     p101_fsm_info_default_bad_change_state_notifier(fixture.fsm_env, fixture.fsm_err, fixture.fsm, STATE_A, STATE_C);
     p101_fsm_info_default_bad_change_state_notifier(fixture.fsm_env, fixture.fsm_err, NULL, STATE_A, STATE_C);
     EXPECT(p101_error_has_no_error(fixture.fsm_err));
-    p101_fsm_info_set_did_change_state_notifier(fixture.fsm, did_notifier);
+    p101_fsm_info_set_did_change_state_notifier(fixture.app_env, fixture.fsm, did_notifier);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_TRANSITIONED);
     EXPECT(p101_fsm_step(fixture.fsm, NULL, NULL, &result) == P101_FSM_STEP_EXITED);
     EXPECT(did_calls == 2);

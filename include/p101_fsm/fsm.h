@@ -35,7 +35,7 @@ extern "C"
         P101_FSM_USER_START = 1,
     } p101_fsm_state;
 
-    typedef int p101_fsm_state_t;
+    typedef int p101_fsm_state_id;
 
     typedef enum
     {
@@ -48,7 +48,7 @@ extern "C"
     struct p101_fsm_decision
     {
         p101_fsm_decision_kind kind;
-        p101_fsm_state_t       next_state;
+        p101_fsm_state_id      next_state;
     };
 
     typedef enum
@@ -77,9 +77,9 @@ extern "C"
     {
         p101_fsm_step_status status;
         size_t               sequence;
-        p101_fsm_state_t     from_state;
-        p101_fsm_state_t     attempted_state;
-        p101_fsm_state_t     next_state;
+        p101_fsm_state_id    from_state;
+        p101_fsm_state_id    attempted_state;
+        p101_fsm_state_id    next_state;
         p101_fsm_refusal     refusal;
     };
 
@@ -107,17 +107,17 @@ extern "C"
     };
 
     typedef void (*p101_fsm_state_func)(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision);
-    typedef void (*p101_fsm_info_will_change_state_notifier_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-    typedef void (*p101_fsm_info_did_change_state_notifier_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id);
-    typedef void (*p101_fsm_info_bad_change_state_notifier_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-    typedef void (*p101_fsm_info_bad_change_state_handler_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink,
+    typedef void (*p101_fsm_info_will_change_state_notifier_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id);
+    typedef void (*p101_fsm_info_did_change_state_notifier_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, p101_fsm_state_id next_state_id);
+    typedef void (*p101_fsm_info_bad_change_state_notifier_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id);
+    typedef void (*p101_fsm_info_bad_change_state_handler_func)(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink,
                                                                 struct p101_fsm_decision *decision);
     typedef void (*p101_fsm_step_observer_func)(const struct p101_env *env, const struct p101_fsm_info *info, const struct p101_fsm_step_result *result, void *user_data);
 
     struct p101_fsm_transition
     {
-        p101_fsm_state_t    from_id;
-        p101_fsm_state_t    to_id;
+        p101_fsm_state_id   from_id;
+        p101_fsm_state_id   to_id;
         p101_fsm_state_func perform;
     };
 
@@ -137,27 +137,27 @@ extern "C"
                                                p101_fsm_info_bad_change_state_handler_func handler) P101_ATTR_MALLOC P101_ATTR_WARN_UNUSED_RESULT;
     void                  p101_fsm_info_destroy(const struct p101_env *env, struct p101_error *fsm_err, struct p101_fsm_info **pinfo);
     const char           *p101_fsm_info_get_name(const struct p101_env *env, const struct p101_fsm_info *info);
-    p101_fsm_state_t      p101_fsm_info_get_current_state(const struct p101_fsm_info *info);
-    size_t                p101_fsm_info_get_step_sequence(const struct p101_fsm_info *info);
-    bool                  p101_fsm_info_is_terminal(const struct p101_fsm_info *info);
+    p101_fsm_state_id     p101_fsm_info_get_current_state(const struct p101_env *env, const struct p101_fsm_info *info);
+    size_t                p101_fsm_info_get_step_sequence(const struct p101_env *env, const struct p101_fsm_info *info);
+    bool                  p101_fsm_info_is_terminal(const struct p101_env *env, const struct p101_fsm_info *info);
 
-    void                                          p101_fsm_info_set_will_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier);
-    void                                          p101_fsm_info_set_did_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier);
-    void                                          p101_fsm_info_set_bad_change_state_notifier(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier);
-    void                                          p101_fsm_info_set_bad_change_state_handler(struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler);
-    void                                          p101_fsm_info_set_step_observer(struct p101_fsm_info *info, p101_fsm_step_observer_func observer, void *user_data);
-    p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_state_notifier(const struct p101_fsm_info *info);
-    p101_fsm_info_did_change_state_notifier_func  p101_fsm_info_get_did_change_state_notifier(const struct p101_fsm_info *info);
-    p101_fsm_info_bad_change_state_notifier_func  p101_fsm_info_get_bad_change_state_notifier(const struct p101_fsm_info *info);
-    p101_fsm_info_bad_change_state_handler_func   p101_fsm_info_get_bad_change_state_handler(const struct p101_fsm_info *info);
+    void                                          p101_fsm_info_set_will_change_state_notifier(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_will_change_state_notifier_func notifier);
+    void                                          p101_fsm_info_set_did_change_state_notifier(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_did_change_state_notifier_func notifier);
+    void                                          p101_fsm_info_set_bad_change_state_notifier(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_bad_change_state_notifier_func notifier);
+    void                                          p101_fsm_info_set_bad_change_state_handler(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_info_bad_change_state_handler_func handler);
+    void                                          p101_fsm_info_set_step_observer(const struct p101_env *env, struct p101_fsm_info *info, p101_fsm_step_observer_func observer, void *user_data);
+    p101_fsm_info_will_change_state_notifier_func p101_fsm_info_get_will_change_state_notifier(const struct p101_env *env, const struct p101_fsm_info *info);
+    p101_fsm_info_did_change_state_notifier_func  p101_fsm_info_get_did_change_state_notifier(const struct p101_env *env, const struct p101_fsm_info *info);
+    p101_fsm_info_bad_change_state_notifier_func  p101_fsm_info_get_bad_change_state_notifier(const struct p101_env *env, const struct p101_fsm_info *info);
+    p101_fsm_info_bad_change_state_handler_func   p101_fsm_info_get_bad_change_state_handler(const struct p101_env *env, const struct p101_fsm_info *info);
 
-    void p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, struct p101_fsm_effect_sink *sink,
+    void p101_fsm_info_default_bad_change_state_handler(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, struct p101_fsm_effect_sink *sink,
                                                         struct p101_fsm_decision *decision);
-    void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-    void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id);
-    void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_t from_state_id, p101_fsm_state_t to_state_id, p101_fsm_state_t next_state_id);
+    void p101_fsm_info_default_bad_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id);
+    void p101_fsm_info_default_will_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id);
+    void p101_fsm_info_default_did_change_state_notifier(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_info *info, p101_fsm_state_id from_state_id, p101_fsm_state_id to_state_id, p101_fsm_state_id next_state_id);
 
-    void p101_fsm_decide_transition(struct p101_fsm_decision *decision, p101_fsm_state_t next_state);
+    void p101_fsm_decide_transition(struct p101_fsm_decision *decision, p101_fsm_state_id next_state);
     void p101_fsm_decide_pause(struct p101_fsm_decision *decision);
     void p101_fsm_decide_exit(struct p101_fsm_decision *decision);
     void p101_fsm_emit_effect(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_sink *sink, const char *kind, const void *data, size_t data_size);
