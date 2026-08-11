@@ -289,6 +289,7 @@ static void test_p101_fsm_effect_batch_create(struct p101_env *env, struct p101_
                 }
                 p101_error_reset(native_err);
             }
+            p101_fsm_effect_batch_destroy(native_env, &native_result);
             native_child_status = native_passed ? EXIT_SUCCESS : EXIT_FAILURE;
         native_child_done_:
             p101_env_destroy(native_env);
