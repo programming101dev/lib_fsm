@@ -999,9 +999,14 @@ static void test_transactional_effect_batch(void)
     struct fixture                          fixture;
     struct callback_context                 context = {0};
     struct p101_fsm_effect_batch           *batch;
-    struct p101_fsm_effect_sink             batch_sink;
     struct p101_fsm_effect_sink             target;
-    struct p101_fsm_step_result             result;
+    struct p101_fsm_step_receipt            receipt;
+    p101_fsm_step_status                    status;
+    p101_fsm_state_id                       current_state;
+    size_t                                  batch_count;
+    int                                     comparison;
+    int                                     finish_status;
+    bool                                    error_present;
     static const struct p101_fsm_transition committed[] = {
         {P101_FSM_INIT, STATE_A, state_effect},
     };
@@ -1014,39 +1019,189 @@ static void test_transactional_effect_batch(void)
 
     fixture_create(&fixture, "committed-effect", committed, 1U, NULL);
     batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
-    p101_fsm_effect_batch_sink(batch, &batch_sink);
     EXPECT(batch != NULL);
-    EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_EXITED);
+    status = p101_fsm_step_with_receipt(fixture.fsm, NULL, batch, &receipt);
+    EXPECT(status == P101_FSM_STEP_EXITED);
     EXPECT(context.effects == 0);
-    EXPECT(p101_fsm_effect_batch_count(batch) == 1U);
-    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, &result, &target) == 0);
+    batch_count = p101_fsm_effect_batch_count(batch);
+    EXPECT(batch_count == 1U);
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &receipt, &target);
+    EXPECT(finish_status == 0);
     EXPECT(context.effects == 1);
-    EXPECT(strcmp(context.effect_kind, "answer") == 0);
+    comparison = strcmp(context.effect_kind, "answer");
+    EXPECT(comparison == 0);
     EXPECT(context.effect_value == 42);
-    EXPECT(p101_fsm_effect_batch_count(batch) == 0U);
+    batch_count = p101_fsm_effect_batch_count(batch);
+    EXPECT(batch_count == 0U);
     p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
     EXPECT(batch == NULL);
     fixture_destroy(&fixture);
 
     memset(&context, 0, sizeof(context));
     fixture_create(&fixture, "discarded-effect", paused, 1U, NULL);
-    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
-    p101_fsm_effect_batch_sink(batch, &batch_sink);
-    EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_PAUSED);
-    EXPECT(p101_fsm_effect_batch_count(batch) == 1U);
-    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, &result, &target) == 0);
+    batch  = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    status = p101_fsm_step_with_receipt(fixture.fsm, NULL, batch, &receipt);
+    EXPECT(status == P101_FSM_STEP_PAUSED);
+    batch_count = p101_fsm_effect_batch_count(batch);
+    EXPECT(batch_count == 1U);
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &receipt, &target);
+    EXPECT(finish_status == 0);
     EXPECT(context.effects == 0);
-    EXPECT(p101_fsm_effect_batch_count(batch) == 0U);
+    batch_count = p101_fsm_effect_batch_count(batch);
+    EXPECT(batch_count == 0U);
     p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
     fixture_destroy(&fixture);
 
     fixture_create(&fixture, "effect-capacity", committed, 1U, NULL);
-    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 4U);
-    p101_fsm_effect_batch_sink(batch, &batch_sink);
-    EXPECT(p101_fsm_step(fixture.fsm, NULL, &batch_sink, &result) == P101_FSM_STEP_REFUSED);
-    EXPECT(result.refusal == P101_FSM_REFUSAL_EFFECT_CAPACITY);
-    EXPECT(p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm) == STATE_A);
-    EXPECT(p101_error_is_error(fixture.app_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT_CAPACITY));
+    batch  = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 4U);
+    status = p101_fsm_step_with_receipt(fixture.fsm, NULL, batch, &receipt);
+    EXPECT(status == P101_FSM_STEP_REFUSED);
+    EXPECT(receipt.result.refusal == P101_FSM_REFUSAL_EFFECT_CAPACITY);
+    current_state = p101_fsm_info_get_current_state(fixture.app_env, fixture.fsm);
+    EXPECT(current_state == STATE_A);
+    error_present = p101_error_is_error(fixture.app_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT_CAPACITY);
+    EXPECT(error_present);
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
+    fixture_destroy(&fixture);
+}
+
+static void test_receipted_step_binds_transition_and_effects(void)
+{
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_effect                  effect;
+    struct p101_fsm_effect_batch           *batch;
+    struct p101_fsm_effect_sink             target;
+    struct p101_fsm_step_receipt            receipt;
+    p101_fsm_step_status                    status;
+    int                                     comparison;
+    int                                     finish_status;
+    int                                     argument;
+    int                                     value;
+    bool                                    found;
+    static const struct p101_fsm_transition transitions[] = {
+        {P101_FSM_INIT, STATE_A, state_effect},
+    };
+
+    fixture_create(&fixture, "receipted-step", transitions, 1U, NULL);
+    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    EXPECT(batch != NULL);
+
+    argument = 7;
+    status   = p101_fsm_step_with_receipt(fixture.fsm, &argument, batch, &receipt);
+    EXPECT(status == P101_FSM_STEP_EXITED);
+    EXPECT(receipt.binding.machine == fixture.fsm);
+    EXPECT(receipt.binding.argument == &argument);
+    EXPECT(receipt.binding.sequence == 1U);
+    EXPECT(receipt.binding.from_state == P101_FSM_INIT);
+    EXPECT(receipt.binding.attempted_state == STATE_A);
+    EXPECT(receipt.disposition == P101_FSM_TRANSITION_APPLIED_CHANGED);
+    EXPECT(receipt.result.status == P101_FSM_STEP_EXITED);
+    EXPECT(receipt.effect_count == 1U);
+
+    found = p101_fsm_step_receipt_effect(&receipt, 0U, &effect);
+    EXPECT(found);
+    comparison = strcmp(effect.kind, "answer");
+    EXPECT(comparison == 0);
+    EXPECT(effect.data_size == sizeof(value));
+    memcpy(&value, effect.data, sizeof(value));
+    EXPECT(value == 42);
+
+    target.handle  = effect_handler;
+    target.context = &context;
+    finish_status  = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &receipt, &target);
+    EXPECT(finish_status == 0);
+    EXPECT(context.effects == 1);
+    found = p101_fsm_step_receipt_effect(&receipt, 0U, &effect);
+    EXPECT(!found);
+
+    status = p101_fsm_step_with_receipt(fixture.fsm, &argument, batch, &receipt);
+    EXPECT(status == P101_FSM_STEP_EXITED);
+    EXPECT(receipt.binding.sequence == 2U);
+    EXPECT(receipt.disposition == P101_FSM_TRANSITION_REFUSED);
+    EXPECT(receipt.result.refusal == P101_FSM_REFUSAL_TERMINAL_MACHINE);
+    EXPECT(receipt.effect_count == 0U);
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &receipt, &target);
+    EXPECT(finish_status == 0);
+    EXPECT(context.effects == 1);
+
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
+    fixture_destroy(&fixture);
+}
+
+static void test_receipted_step_classifies_no_change_and_rejects_binding_swaps(void)
+{
+    struct fixture                          fixture;
+    struct callback_context                 context = {0};
+    struct p101_fsm_effect                  effect;
+    struct p101_fsm_effect_batch           *batch;
+    struct p101_fsm_effect_batch           *other_batch;
+    struct p101_fsm_effect_sink             other_sink;
+    struct p101_fsm_effect_sink             target;
+    struct p101_fsm_step_receipt            receipt;
+    struct p101_fsm_step_receipt            changed_receipt;
+    p101_fsm_step_status                    status;
+    size_t                                  batch_count;
+    int                                     finish_status;
+    bool                                    error_present;
+    bool                                    found;
+    static const struct p101_fsm_transition transitions[] = {
+        {P101_FSM_INIT, STATE_A, state_effect_then_pause},
+    };
+
+    fixture_create(&fixture, "receipted-pause", transitions, 1U, NULL);
+    batch       = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    other_batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 2U, 64U);
+    EXPECT(batch != NULL);
+    EXPECT(other_batch != NULL);
+
+    status = p101_fsm_step_with_receipt(fixture.fsm, NULL, batch, &receipt);
+    EXPECT(status == P101_FSM_STEP_PAUSED);
+    EXPECT(receipt.disposition == P101_FSM_TRANSITION_APPLIED_NO_CHANGE);
+    EXPECT(receipt.effect_count == 1U);
+
+    target.handle                           = effect_handler;
+    target.context                          = &context;
+    changed_receipt                         = receipt;
+    changed_receipt.binding.attempted_state = STATE_B;
+    found                                   = p101_fsm_step_receipt_effect(&changed_receipt, 0U, &effect);
+    EXPECT(!found);
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &changed_receipt, &target);
+    EXPECT(finish_status == -1);
+    error_present = p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT);
+    EXPECT(error_present);
+    p101_error_reset(fixture.fsm_err);
+    batch_count = p101_fsm_effect_batch_count(batch);
+    EXPECT(batch_count == 1U);
+
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &receipt, NULL);
+    EXPECT(finish_status == -1);
+    error_present = p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT);
+    EXPECT(error_present);
+    p101_error_reset(fixture.fsm_err);
+    batch_count = p101_fsm_effect_batch_count(batch);
+    EXPECT(batch_count == 1U);
+
+    p101_fsm_effect_batch_sink(other_batch, &other_sink);
+    p101_fsm_emit_effect(fixture.fsm_env, fixture.fsm_err, &other_sink, "other", NULL, 0U);
+    batch_count = p101_fsm_effect_batch_count(other_batch);
+    EXPECT(batch_count == 1U);
+
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, other_batch, &receipt, &target);
+    EXPECT(finish_status == -1);
+    error_present = p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT);
+    EXPECT(error_present);
+    p101_error_reset(fixture.fsm_err);
+    batch_count = p101_fsm_effect_batch_count(other_batch);
+    EXPECT(batch_count == 1U);
+
+    found = p101_fsm_step_receipt_effect(&receipt, 0U, &effect);
+    EXPECT(found);
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &receipt, &target);
+    EXPECT(finish_status == 0);
+    EXPECT(context.effects == 0);
+
+    p101_fsm_effect_batch_destroy(fixture.fsm_env, &other_batch);
     p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
     fixture_destroy(&fixture);
 }
@@ -1056,30 +1211,42 @@ static void test_effect_batch_validation(void)
     struct fixture                fixture;
     struct p101_fsm_effect_batch *batch;
     struct p101_fsm_effect_sink   sink;
-    struct p101_fsm_step_result   result = {P101_FSM_STEP_PAUSED, 0U, 0, 0, 0, P101_FSM_REFUSAL_NONE};
+    struct p101_fsm_step_receipt  receipt = {0};
+    size_t                        batch_count;
+    int                           finish_status;
+    bool                          error_present;
 
     fixture_create(&fixture, "effect-batch-validation", basic_transitions, 2U, NULL);
-    EXPECT(p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 0U, 1U) == NULL);
-    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 0U, 1U);
+    EXPECT(batch == NULL);
+    error_present = p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT);
+    EXPECT(error_present);
     p101_error_reset(fixture.fsm_err);
-    EXPECT(p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 0U) == NULL);
-    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 0U);
+    EXPECT(batch == NULL);
+    error_present = p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT);
+    EXPECT(error_present);
     p101_error_reset(fixture.fsm_err);
 
     p101_fsm_effect_batch_sink(NULL, &sink);
     EXPECT(sink.handle == NULL);
     EXPECT(sink.context == NULL);
-    EXPECT(p101_fsm_effect_batch_count(NULL) == 0U);
-    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, NULL, &result, &sink) == -1);
-    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    batch_count = p101_fsm_effect_batch_count(NULL);
+    EXPECT(batch_count == 0U);
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, NULL, &receipt, &sink);
+    EXPECT(finish_status == -1);
+    error_present = p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT);
+    EXPECT(error_present);
     p101_error_reset(fixture.fsm_err);
     p101_fsm_effect_batch_destroy(fixture.fsm_env, NULL);
 
     batch = p101_fsm_effect_batch_create(fixture.fsm_env, fixture.fsm_err, 1U, 32U);
     EXPECT(batch != NULL);
     p101_fsm_effect_batch_sink(batch, NULL);
-    EXPECT(p101_fsm_effect_batch_finish_step(fixture.fsm_env, fixture.fsm_err, batch, NULL, &sink) == -1);
-    EXPECT(p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT));
+    finish_status = p101_fsm_effect_batch_finish_receipt(fixture.fsm_env, fixture.fsm_err, batch, &receipt, &sink);
+    EXPECT(finish_status == -1);
+    error_present = p101_error_is_error(fixture.fsm_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT);
+    EXPECT(error_present);
     p101_error_reset(fixture.fsm_err);
     p101_fsm_effect_batch_destroy(fixture.fsm_env, &batch);
     fixture_destroy(&fixture);
@@ -1245,6 +1412,8 @@ int main(void)
     test_effects_and_step_observer();
     test_effect_validation();
     test_transactional_effect_batch();
+    test_receipted_step_binds_transition_and_effects();
+    test_receipted_step_classifies_no_change_and_rejects_binding_swaps();
     test_effect_batch_validation();
     test_step_sequence_exhaustion();
     test_step_observer_cannot_reenter();

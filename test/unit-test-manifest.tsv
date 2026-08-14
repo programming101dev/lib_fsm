@@ -1,6 +1,6 @@
 function	function_usr	test_kind	test_source
 p101_fsm_effect_batch_create	c:@F@p101_fsm_effect_batch_create	fault	test/test_fault_wrappers_effect.c
-p101_fsm_effect_batch_finish_step	c:@F@p101_fsm_effect_batch_finish_step	fault	test/test_fault_wrappers_effect.c
+p101_fsm_effect_batch_finish_receipt	c:@F@p101_fsm_effect_batch_finish_receipt	fault	test/test_fault_wrappers_effect.c
 p101_fsm_emit_effect	c:@F@p101_fsm_emit_effect	fault	test/test_fault_wrappers_fsm.c
 p101_fsm_exit_immediately	c:@F@p101_fsm_exit_immediately	fault	test/test_fault_wrappers_fsm.c
 p101_fsm_info_create	c:@F@p101_fsm_info_create	fault	test/test_fault_wrappers_fsm.c
@@ -30,3 +30,5 @@ p101_fsm_info_set_step_observer	c:@F@p101_fsm_info_set_step_observer	behavior-ex
 p101_fsm_info_set_will_change_state_notifier	c:@F@p101_fsm_info_set_will_change_state_notifier	behavior-existing	test/test_fsm.c
 p101_fsm_run	c:@F@p101_fsm_run	behavior-existing	test/test_fsm.c
 p101_fsm_step	c:@F@p101_fsm_step	behavior-existing	test/test_fsm.c
+p101_fsm_step_receipt_effect	c:@F@p101_fsm_step_receipt_effect	behavior-existing	test/test_fsm.c
+p101_fsm_step_with_receipt	c:@F@p101_fsm_step_with_receipt	behavior-existing	test/test_fsm.c

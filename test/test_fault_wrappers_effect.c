@@ -320,8 +320,8 @@ static void test_p101_fsm_effect_batch_create(struct p101_env *env, struct p101_
     }
 }
 
-/* P101_TEST_CASE(p101_fsm_effect_batch_finish_step) */
-static void test_p101_fsm_effect_batch_finish_step(struct p101_env *env, struct p101_error *err)
+/* P101_TEST_CASE(p101_fsm_effect_batch_finish_receipt) */
+static void test_p101_fsm_effect_batch_finish_receipt(struct p101_env *env, struct p101_error *err)
 {
 #ifdef __linux__
     static const int         errors[]      = {EIO};
@@ -347,14 +347,14 @@ static void test_p101_fsm_effect_batch_finish_step(struct p101_env *env, struct 
         fault_resource_events = 0U;
         errno                 = P101_TEST_ERRNO_SENTINEL;
         p101_env_set_fault_injector(env, fail_next_call, &state);
-        int result = p101_fsm_effect_batch_finish_step(env, err, NULL, NULL, NULL);
+        int result = p101_fsm_effect_batch_finish_receipt(env, err, NULL, NULL, NULL);
         (void)result;
         EXPECT(state.checks == 1);
         EXPECT(p101_error_is_errno(err, state.code));
         EXPECT(errno == P101_TEST_ERRNO_SENTINEL);
         EXPECT(result == (-1));
         EXPECT(fault_resource_events == 0U);
-        write_outcome("p101_fsm_effect_batch_finish_step", "errno", error_names[index], state.code, failures == failures_before);
+        write_outcome("p101_fsm_effect_batch_finish_receipt", "errno", error_names[index], state.code, failures == failures_before);
         p101_error_reset(err);
     }
     p101_env_set_fault_injector(env, NULL, NULL);
@@ -398,45 +398,21 @@ static void test_p101_fsm_effect_batch_finish_step(struct p101_env *env, struct 
                 native_child_status = 77;
                 goto native_child_done_;
             }
-            struct p101_fsm_effect_batch *native_argument_2;
-            native_argument_2 = p101_fsm_effect_batch_create(native_env, native_err, 1U, 16U);
-            if(native_argument_2 == NULL)
-            {
-                native_child_status = 77;
-                goto native_child_done_;
-            }
-            struct p101_fsm_step_result   native_argument_3 = {0};
-            struct p101_fsm_effect_batch *native_argument_4_batch;
-            struct p101_fsm_effect_sink   native_argument_4;
-            native_argument_4_batch = p101_fsm_effect_batch_create(native_env, native_err, 1U, 16U);
-            if(native_argument_4_batch == NULL)
-            {
-                native_child_status = 77;
-                goto native_child_done_;
-            }
-            p101_fsm_effect_batch_sink(native_argument_4_batch, &native_argument_4);
-            int native_result = p101_fsm_effect_batch_finish_step(native_env, native_err, native_argument_2, &native_argument_3, &native_argument_4);
+            struct p101_fsm_step_receipt native_argument_3 = {0};
+            struct p101_fsm_effect_sink  native_argument_4 = {0};
+            int                          native_result     = p101_fsm_effect_batch_finish_receipt(native_env, native_err, NULL, &native_argument_3, &native_argument_4);
             (void)native_result;
-            if(p101_error_has_error(native_err))
+            if(!p101_error_is_error(native_err, P101_ERROR_USER, P101_FSM_ERROR_EFFECT))
             {
-                bool native_error_declared = false;
-
-                for(size_t native_error_index = 0U; native_error_index < sizeof(errors) / sizeof(errors[0]); native_error_index++)
-                {
-                    if(p101_error_is_errno(native_err, errors[native_error_index]))
-                    {
-                        native_error_declared = true;
-                    }
-                }
-                if(!native_error_declared)
-                {
-                    fprintf(stderr, "native smoke produced an undeclared platform failure: p101_fsm_effect_batch_finish_step: %s\n", p101_error_get_message(native_err));
-                    native_passed = false;
-                }
-                p101_error_reset(native_err);
+                fprintf(stderr, "native smoke did not produce the declared failure: p101_fsm_effect_batch_finish_receipt: %s\n", p101_error_get_message(native_err));
+                native_passed = false;
             }
-            p101_fsm_effect_batch_destroy(native_env, &native_argument_2);
-            p101_fsm_effect_batch_destroy(native_env, &native_argument_4_batch);
+            if(native_result != -1)
+            {
+                fprintf(stderr, "native smoke returned an undeclared result: p101_fsm_effect_batch_finish_receipt\n");
+                native_passed = false;
+            }
+            p101_error_reset(native_err);
             native_child_status = native_passed ? EXIT_SUCCESS : EXIT_FAILURE;
         native_child_done_:
             p101_env_destroy(native_env);
@@ -447,18 +423,18 @@ static void test_p101_fsm_effect_batch_finish_step(struct p101_env *env, struct 
             EXPECT(native_waitpid_nointr(native_pid, &native_status) == native_pid);
             if(WIFSIGNALED(native_status))
             {
-                fprintf(stderr, "native smoke terminated by signal: p101_fsm_effect_batch_finish_step: %d\n", WTERMSIG(native_status));
+                fprintf(stderr, "native smoke terminated by signal: p101_fsm_effect_batch_finish_receipt: %d\n", WTERMSIG(native_status));
             }
             EXPECT(WIFEXITED(native_status));
             if(WIFEXITED(native_status) && WEXITSTATUS(native_status) == 77)
             {
-                fprintf(stderr, "native smoke fixture unavailable: p101_fsm_effect_batch_finish_step\n");
+                fprintf(stderr, "native smoke fixture unavailable: p101_fsm_effect_batch_finish_receipt\n");
             }
             else if(WIFEXITED(native_status))
             {
                 if(WEXITSTATUS(native_status) != EXIT_SUCCESS)
                 {
-                    fprintf(stderr, "native smoke exited unsuccessfully: p101_fsm_effect_batch_finish_step: %d\n", WEXITSTATUS(native_status));
+                    fprintf(stderr, "native smoke exited unsuccessfully: p101_fsm_effect_batch_finish_receipt: %d\n", WEXITSTATUS(native_status));
                 }
                 EXPECT(WEXITSTATUS(native_status) == EXIT_SUCCESS);
             }
@@ -507,7 +483,7 @@ int main(void)
         }
         if(!native_child_process)
         {
-            test_p101_fsm_effect_batch_finish_step(env, err);
+            test_p101_fsm_effect_batch_finish_receipt(env, err);
         }
     }
     p101_env_destroy(env);

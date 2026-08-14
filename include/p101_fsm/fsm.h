@@ -18,6 +18,7 @@
  */
 
 #include <p101_env/env.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -81,6 +82,43 @@ extern "C"
         p101_fsm_state_id    attempted_state;
         p101_fsm_state_id    next_state;
         p101_fsm_refusal     refusal;
+    };
+
+    typedef enum
+    {
+        P101_FSM_TRANSITION_APPLIED_CHANGED = 0,
+        P101_FSM_TRANSITION_APPLIED_NO_CHANGE,
+        P101_FSM_TRANSITION_REFUSED,
+        P101_FSM_TRANSITION_ERROR,
+    } p101_fsm_transition_disposition;
+
+    /*
+     * Runtime identity for the exact machine step described by a receipt.
+     * Machine and argument pointers are process-local identities, not durable
+     * identifiers or snapshots of mutable pointee data.
+     */
+    struct p101_fsm_step_binding
+    {
+        const struct p101_fsm_info *machine;
+        const void                 *argument;
+        size_t                      sequence;
+        p101_fsm_state_id           from_state;
+        p101_fsm_state_id           attempted_state;
+    };
+
+    /*
+     * One deterministic FSM transition and its exact staged effects. The
+     * effect view remains valid only until its batch is finished, reused, or
+     * destroyed. Durable journal ordering belongs outside the FSM.
+     */
+    struct p101_fsm_step_receipt
+    {
+        struct p101_fsm_step_binding        binding;
+        p101_fsm_transition_disposition     disposition;
+        struct p101_fsm_step_result         result;
+        const struct p101_fsm_effect_batch *effect_batch;
+        uint64_t                            effect_generation;
+        size_t                              effect_count;
     };
 
     typedef enum
@@ -166,17 +204,18 @@ extern "C"
      * A bounded batch stages effect kind strings and payload bytes without
      * allocating during exactly one step. Calling
      * p101_fsm_effect_batch_sink() fills caller-owned sink storage and starts a
-     * fresh batch. After step returns, finish_step() delivers the batch only
-     * for a committed transition or exit and otherwise discards it. Do not
-     * pass a batch sink to p101_fsm_run(), because run spans multiple step
-     * transactions. Delivery itself is external and cannot be rolled back if
-     * its handler fails.
+     * fresh batch. p101_fsm_step_with_receipt() binds that batch to one exact
+     * step, and finish_receipt() delivers it only for an applied state change.
+     * Do not pass a batch sink to p101_fsm_run(), because run spans multiple
+     * step transactions. Delivery itself is external and cannot be rolled back
+     * if its handler fails.
      */
     struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env *env, struct p101_error *err, size_t maximum_effects, size_t maximum_bytes) P101_ATTR_MALLOC P101_ATTR_WARN_UNUSED_RESULT;
     void                          p101_fsm_effect_batch_destroy(const struct p101_env *env, struct p101_fsm_effect_batch **batch);
     void                          p101_fsm_effect_batch_sink(struct p101_fsm_effect_batch *batch, struct p101_fsm_effect_sink *sink);
     size_t                        p101_fsm_effect_batch_count(const struct p101_fsm_effect_batch *batch);
-    int                           p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_result *result, struct p101_fsm_effect_sink *target);
+    int                           p101_fsm_effect_batch_finish_receipt(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_receipt *receipt, struct p101_fsm_effect_sink *target);
+    bool                          p101_fsm_step_receipt_effect(const struct p101_fsm_step_receipt *receipt, size_t index, struct p101_fsm_effect *effect);
 
     /*
      * step executes exactly one state callback or one rejected-transition
@@ -187,6 +226,7 @@ extern "C"
      * run is only a convenience loop around step. last_result may be NULL.
      */
     p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_step_result *result) P101_ATTR_WARN_UNUSED_RESULT;
+    p101_fsm_step_status p101_fsm_step_with_receipt(struct p101_fsm_info *info, void *arg, struct p101_fsm_effect_batch *batch, struct p101_fsm_step_receipt *receipt) P101_ATTR_WARN_UNUSED_RESULT;
     p101_fsm_run_result  p101_fsm_run(struct p101_fsm_info *info, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_step_result *last_result) P101_ATTR_WARN_UNUSED_RESULT;
 
     void p101_fsm_exit_immediately(const struct p101_env *env, struct p101_error *err, void *arg, struct p101_fsm_effect_sink *sink, struct p101_fsm_decision *decision);

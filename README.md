@@ -180,6 +180,39 @@ failed steps discard the batch. Capacity exhaustion is the typed
 must not be passed to `p101_fsm_run()`. Final delivery still invokes external
 code and therefore cannot undo effects already accepted by the target.
 
+### Receipted transition boundary
+
+`p101_fsm_step_with_receipt()` is the integration boundary for runtimes that
+need accountable effects. One receipt binds the process-local machine identity,
+argument identity, step sequence, source and attempted states, state-change
+disposition, typed step result, and the exact staged effect generation. An
+applied no-change (pause), a refusal, and an execution error remain distinct
+without inspecting the effect list. `p101_fsm_step_receipt_effect()` exposes the
+effects as borrowed views, and `p101_fsm_effect_batch_finish_receipt()` refuses
+a stale receipt or a receipt paired with another batch.
+
+The opaque batch retains the admitted binding and result privately. Changing a
+public receipt field therefore makes effect lookup and delivery fail without
+consuming caller-owned batch contents. This detects a forged or accidentally
+cross-paired receipt; it does not snapshot the bytes behind the opaque argument
+pointer.
+
+The ordinary `p101_fsm_step()` remains the primitive transition operation for
+callers that do not need a receipted effect boundary. The receipted API stages
+effects around that same operation instead of maintaining a second transition
+implementation.
+
+The architecture choice is deliberately a caller-owned opaque batch plus a
+borrowed receipt. Keeping the former separate result and batch as the primary
+interface allowed accidental cross-step pairing. Putting a fixed effect array
+inside every receipt would make the public ABI and stack cost depend on an
+arbitrary capacity. The chosen design preserves caller-selected bounds and
+detects reuse with a generation identity. Unlike Rust's borrow checker, C
+cannot make use-after-destroy unrepresentable, and the machine pointer is not a
+durable identity. Reopen this choice if receipts must cross a process boundary;
+that requires an owned serialized record and an external append sequence, not
+more mutable state inside the FSM.
+
 ### Refusal and execution boundaries
 
 Unknown edges, invalid callback or handler decisions, redirect cycles, terminal

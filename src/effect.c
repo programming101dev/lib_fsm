@@ -30,16 +30,25 @@ struct stored_effect
 
 struct p101_fsm_effect_batch
 {
-    struct stored_effect *effects;
-    unsigned char        *bytes;
-    size_t                maximum_effects;
-    size_t                maximum_bytes;
-    size_t                effect_count;
-    size_t                byte_count;
+    struct stored_effect           *effects;
+    unsigned char                  *bytes;
+    size_t                          maximum_effects;
+    size_t                          maximum_bytes;
+    size_t                          effect_count;
+    size_t                          byte_count;
+    uint64_t                        generation;
+    struct p101_fsm_step_binding    admitted_binding;
+    struct p101_fsm_step_result     admitted_result;
+    p101_fsm_transition_disposition admitted_disposition;
+    bool                            receipt_available;
 };
 
-static void batch_effect_handler(const struct p101_env *env, struct p101_error *err, void *context, const struct p101_fsm_effect *effect);
-static void batch_reset(struct p101_fsm_effect_batch *batch);
+static void                            batch_advance_generation(struct p101_fsm_effect_batch *batch);
+static void                            batch_bind_receipt(struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_receipt *receipt);
+static void                            batch_effect_handler(const struct p101_env *env, struct p101_error *err, void *context, const struct p101_fsm_effect *effect);
+static bool                            batch_receipt_matches(const struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_receipt *receipt);
+static void                            batch_reset(struct p101_fsm_effect_batch *batch);
+static p101_fsm_transition_disposition step_disposition(const struct p101_fsm_step_result *result);
 
 struct p101_fsm_effect_batch *p101_fsm_effect_batch_create(const struct p101_env *env, struct p101_error *err, size_t maximum_effects, size_t maximum_bytes)
 {
@@ -100,6 +109,7 @@ void p101_fsm_effect_batch_sink(struct p101_fsm_effect_batch *batch, struct p101
     if(sink != NULL)
     {
         batch_reset(batch);
+        batch_advance_generation(batch);
         sink->handle  = batch == NULL ? NULL : batch_effect_handler;
         sink->context = batch;
     }
@@ -110,21 +120,27 @@ size_t p101_fsm_effect_batch_count(const struct p101_fsm_effect_batch *batch)
     return batch == NULL ? 0U : batch->effect_count;
 }
 
-int p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_result *result, struct p101_fsm_effect_sink *target)
+int p101_fsm_effect_batch_finish_receipt(const struct p101_env *env, struct p101_error *err, struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_receipt *receipt, struct p101_fsm_effect_sink *target)
 {
     int  deliver;
     int  return_value;
     bool error_present;
+    bool finish_admitted;
+    bool receipt_admitted;
 
     P101_TRACE(env);
     P101_WRAPPER_FAULT_RETURN(env, err, return_value, -1);
-    return_value = -1;
-    if(batch == NULL || result == NULL || target == NULL || target->handle == NULL)
+    receipt_admitted = batch_receipt_matches(batch, receipt);
+    finish_admitted  = false;
+    return_value     = -1;
+    if(!receipt_admitted || target == NULL || target->handle == NULL)
     {
-        P101_ERROR_RAISE_USER(err, "Invalid FSM effect-batch delivery", P101_FSM_ERROR_EFFECT);
+        P101_ERROR_RAISE_USER(err, "Invalid or stale FSM step receipt", P101_FSM_ERROR_EFFECT);
         goto done;
     }
-    deliver = result->status == P101_FSM_STEP_TRANSITIONED || result->status == P101_FSM_STEP_EXITED;
+    finish_admitted = true;
+
+    deliver = receipt->disposition == P101_FSM_TRANSITION_APPLIED_CHANGED;
     if(deliver)
     {
         for(size_t index = 0U; index < batch->effect_count; ++index)
@@ -147,9 +163,70 @@ int p101_fsm_effect_batch_finish_step(const struct p101_env *env, struct p101_er
     return_value = 0;
 
 done:
-    batch_reset(batch);
+    if(finish_admitted)
+    {
+        batch_reset(batch);
+        batch_advance_generation(batch);
+    }
     P101_WRAPPER_DONE(env);
     return return_value;
+}
+
+bool p101_fsm_step_receipt_effect(const struct p101_fsm_step_receipt *receipt, size_t index, struct p101_fsm_effect *effect)
+{
+    const struct p101_fsm_effect_batch *batch;
+    const struct stored_effect         *stored;
+    bool                                found;
+    bool                                receipt_admitted;
+
+    found = false;
+    if(receipt == NULL || effect == NULL || receipt->effect_batch == NULL)
+    {
+        goto done;
+    }
+    batch            = receipt->effect_batch;
+    receipt_admitted = batch_receipt_matches(batch, receipt);
+    if(!receipt_admitted || index >= receipt->effect_count)
+    {
+        goto done;
+    }
+
+    stored            = &batch->effects[index];
+    effect->kind      = (const char *)&batch->bytes[stored->kind_offset];
+    effect->data      = stored->data_size == 0U ? NULL : &batch->bytes[stored->data_offset];
+    effect->data_size = stored->data_size;
+    found             = true;
+
+done:
+    return found;
+}
+
+p101_fsm_step_status p101_fsm_step_with_receipt(struct p101_fsm_info *info, void *arg, struct p101_fsm_effect_batch *batch, struct p101_fsm_step_receipt *receipt)
+{
+    struct p101_fsm_effect_sink sink;
+    p101_fsm_step_status        status;
+
+    status = P101_FSM_STEP_ERROR;
+    if(batch == NULL || receipt == NULL)
+    {
+        goto done;
+    }
+
+    p101_fsm_effect_batch_sink(batch, &sink);
+    status                           = p101_fsm_step(info, arg, &sink, &receipt->result);
+    receipt->binding.machine         = info;
+    receipt->binding.argument        = arg;
+    receipt->binding.sequence        = receipt->result.sequence;
+    receipt->binding.from_state      = receipt->result.from_state;
+    receipt->binding.attempted_state = receipt->result.attempted_state;
+    receipt->disposition             = step_disposition(&receipt->result);
+    receipt->effect_batch            = batch;
+    receipt->effect_generation       = batch->generation;
+    receipt->effect_count            = batch->effect_count;
+    batch_bind_receipt(batch, receipt);
+
+done:
+    return status;
 }
 
 static void batch_effect_handler(const struct p101_env *env, struct p101_error *err, void *context, const struct p101_fsm_effect *effect)
@@ -201,7 +278,96 @@ static void batch_reset(struct p101_fsm_effect_batch *batch)
 {
     if(batch != NULL)
     {
-        batch->effect_count = 0U;
-        batch->byte_count   = 0U;
+        batch->effect_count      = 0U;
+        batch->byte_count        = 0U;
+        batch->receipt_available = false;
     }
+}
+
+static void batch_advance_generation(struct p101_fsm_effect_batch *batch)
+{
+    if(batch != NULL)
+    {
+        batch->generation++;
+        if(batch->generation == 0U)
+        {
+            batch->generation = 1U;
+        }
+    }
+}
+
+static void batch_bind_receipt(struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_receipt *receipt)
+{
+    if(batch != NULL && receipt != NULL)
+    {
+        batch->admitted_binding     = receipt->binding;
+        batch->admitted_result      = receipt->result;
+        batch->admitted_disposition = receipt->disposition;
+        batch->receipt_available    = true;
+    }
+}
+
+static bool batch_receipt_matches(const struct p101_fsm_effect_batch *batch, const struct p101_fsm_step_receipt *receipt)
+{
+    bool matches;
+
+    matches = false;
+    if(batch != NULL && receipt != NULL && batch->receipt_available && receipt->effect_batch == batch && receipt->effect_generation == batch->generation && receipt->effect_count == batch->effect_count &&
+       receipt->binding.machine == batch->admitted_binding.machine && receipt->binding.argument == batch->admitted_binding.argument && receipt->binding.sequence == batch->admitted_binding.sequence &&
+       receipt->binding.from_state == batch->admitted_binding.from_state && receipt->binding.attempted_state == batch->admitted_binding.attempted_state && receipt->disposition == batch->admitted_disposition &&
+       receipt->result.status == batch->admitted_result.status && receipt->result.sequence == batch->admitted_result.sequence && receipt->result.from_state == batch->admitted_result.from_state &&
+       receipt->result.attempted_state == batch->admitted_result.attempted_state && receipt->result.next_state == batch->admitted_result.next_state && receipt->result.refusal == batch->admitted_result.refusal)
+    {
+        matches = true;
+    }
+
+    return matches;
+}
+
+static p101_fsm_transition_disposition step_disposition(const struct p101_fsm_step_result *result)
+{
+    p101_fsm_transition_disposition disposition;
+
+    disposition = P101_FSM_TRANSITION_ERROR;
+    if(result == NULL)
+    {
+        goto done;
+    }
+
+#ifdef __clang__
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wcovered-switch-default"
+#endif
+    switch(result->status)    // GCOVR_EXCL_BR_LINE: default protects against an invalid enum representation.
+    {
+        case P101_FSM_STEP_TRANSITIONED:
+            disposition = P101_FSM_TRANSITION_APPLIED_CHANGED;
+            break;
+        case P101_FSM_STEP_PAUSED:
+            disposition = P101_FSM_TRANSITION_APPLIED_NO_CHANGE;
+            break;
+        case P101_FSM_STEP_EXITED:
+            disposition = result->refusal == P101_FSM_REFUSAL_NONE ? P101_FSM_TRANSITION_APPLIED_CHANGED : P101_FSM_TRANSITION_REFUSED;
+            break;
+        case P101_FSM_STEP_REFUSED:
+            if(result->refusal == P101_FSM_REFUSAL_UNKNOWN_TRANSITION && result->next_state != result->attempted_state)
+            {
+                disposition = P101_FSM_TRANSITION_APPLIED_CHANGED;
+            }
+            else
+            {
+                disposition = P101_FSM_TRANSITION_REFUSED;
+            }
+            break;
+        case P101_FSM_STEP_ERROR:
+        default:
+            disposition = P101_FSM_TRANSITION_ERROR;
+            break;
+    }
+#ifdef __clang__
+    #pragma clang diagnostic pop
+#endif
+
+done:
+    return disposition;
 }

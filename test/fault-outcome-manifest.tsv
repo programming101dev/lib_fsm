@@ -1,6 +1,6 @@
 function	function_usr	domain	symbol_header	linux_faults	macos_faults	freebsd_faults	posix_faults	linux_conditional	macos_conditional	freebsd_conditional
 p101_fsm_effect_batch_create	c:@F@p101_fsm_effect_batch_create	errno	errno.h	EIO	EIO	EIO	EIO			
-p101_fsm_effect_batch_finish_step	c:@F@p101_fsm_effect_batch_finish_step	errno	errno.h	EIO	EIO	EIO	EIO			
+p101_fsm_effect_batch_finish_receipt	c:@F@p101_fsm_effect_batch_finish_receipt	errno	errno.h	EIO	EIO	EIO	EIO			
 p101_fsm_emit_effect	c:@F@p101_fsm_emit_effect	errno	errno.h	EIO	EIO	EIO	EIO			
 p101_fsm_exit_immediately	c:@F@p101_fsm_exit_immediately	errno	errno.h	EIO	EIO	EIO	EIO			
 p101_fsm_info_create	c:@F@p101_fsm_info_create	errno	errno.h	EIO	EIO	EIO	EIO			

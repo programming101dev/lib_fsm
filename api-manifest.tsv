@@ -2,7 +2,7 @@ function	function_usr	current_source	native_function	native_function_usr
 p101_fsm_effect_batch_count	c:@F@p101_fsm_effect_batch_count	libraries/lib_fsm/src/effect.c	-	-
 p101_fsm_effect_batch_create	c:@F@p101_fsm_effect_batch_create	libraries/lib_fsm/src/effect.c	-	-
 p101_fsm_effect_batch_destroy	c:@F@p101_fsm_effect_batch_destroy	libraries/lib_fsm/src/effect.c	-	-
-p101_fsm_effect_batch_finish_step	c:@F@p101_fsm_effect_batch_finish_step	libraries/lib_fsm/src/effect.c	-	-
+p101_fsm_effect_batch_finish_receipt	c:@F@p101_fsm_effect_batch_finish_receipt	libraries/lib_fsm/src/effect.c	-	-
 p101_fsm_effect_batch_sink	c:@F@p101_fsm_effect_batch_sink	libraries/lib_fsm/src/effect.c	-	-
 p101_fsm_decide_exit	c:@F@p101_fsm_decide_exit	libraries/lib_fsm/src/fsm.c	-	-
 p101_fsm_decide_pause	c:@F@p101_fsm_decide_pause	libraries/lib_fsm/src/fsm.c	-	-
@@ -30,3 +30,5 @@ p101_fsm_info_set_step_observer	c:@F@p101_fsm_info_set_step_observer	libraries/l
 p101_fsm_info_set_will_change_state_notifier	c:@F@p101_fsm_info_set_will_change_state_notifier	libraries/lib_fsm/src/fsm.c	-	-
 p101_fsm_run	c:@F@p101_fsm_run	libraries/lib_fsm/src/fsm.c	-	-
 p101_fsm_step	c:@F@p101_fsm_step	libraries/lib_fsm/src/fsm.c	-	-
+p101_fsm_step_receipt_effect	c:@F@p101_fsm_step_receipt_effect	libraries/lib_fsm/src/effect.c	-	-
+p101_fsm_step_with_receipt	c:@F@p101_fsm_step_with_receipt	libraries/lib_fsm/src/effect.c	-	-
