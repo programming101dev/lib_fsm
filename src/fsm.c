@@ -29,36 +29,26 @@
 #include <p101_text/p101_wchar.h>
 #include <p101_text/p101_wctype.h>
 #include <p101_text/p101_wordexp.h>
+#include <p101_transition/transition.h>
 #include <stdint.h>
-
-enum
-{
-    FSM_HASH_KEY_SHIFT          = 32,
-    FSM_HASH_MIX_SHIFT_1        = 30,
-    FSM_HASH_MIX_SHIFT_2        = 27,
-    FSM_HASH_MIX_SHIFT_3        = 31,
-    FSM_TRANSITION_MIN_CAPACITY = 8,
-};
 
 static void                fsm_complete_step(struct p101_fsm_info *info, struct p101_fsm_step_result *result, bool started);
 static bool                fsm_has_error(const struct p101_error *app_err, const struct p101_error *fsm_err);
 static const char         *fsm_info_name_or_default(const struct p101_fsm_info *info);
 static void                fsm_prepare_result(struct p101_fsm_step_result *result);
 static p101_fsm_state_func fsm_transition(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id);
-static size_t              fsm_transition_hash(p101_fsm_state_id from_id, p101_fsm_state_id to_id);
 
-struct p101_fsm_transition_slot
+struct p101_fsm_transition_map
 {
-    p101_fsm_state_id   from_id;
-    p101_fsm_state_id   to_id;
-    p101_fsm_state_func perform;
-    bool                occupied;
+    struct p101_transition_rule *rules;
+    p101_fsm_state_func         *performers;
+    struct p101_transition_slot *slots;
+    struct p101_transition_table table;
 };
 
-static struct p101_fsm_transition_slot       *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_id *initial_state);
-static size_t                                 fsm_transition_map_capacity(size_t transition_count);
-static int                                    fsm_transition_map_insert(struct p101_fsm_transition_slot slots[], size_t capacity, const struct p101_fsm_transition *transition);
-static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id, size_t *probe_count);
+static int                    fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, struct p101_fsm_transition_map *map, p101_fsm_state_id *initial_state);
+static void                   fsm_transition_map_destroy(const struct p101_env *env, struct p101_fsm_transition_map *map);
+static p101_transition_status fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id, struct p101_transition_result *result);
 
 struct p101_fsm_info
 {
@@ -67,9 +57,7 @@ struct p101_fsm_info
     char                                         *name;
     const struct p101_env                        *fsm_env;
     struct p101_error                            *fsm_err;
-    struct p101_fsm_transition_slot              *transition_slots;
-    size_t                                        transition_capacity;
-    size_t                                        transition_count;
+    struct p101_fsm_transition_map                transitions;
     p101_fsm_state_id                             from_state_id;
     p101_fsm_state_id                             current_state_id;
     size_t                                        sequence;
@@ -88,24 +76,29 @@ struct p101_fsm_info
 struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p101_error *err, const char *name, const struct p101_env *fsm_env, struct p101_error *fsm_err, const struct p101_fsm_transition transitions[], size_t transition_count,
                                            p101_fsm_info_bad_change_state_handler_func handler)
 {
-    const struct p101_env           *target_env;
-    struct p101_error               *target_err;
-    struct p101_fsm_info            *info;
-    struct p101_fsm_transition_slot *transition_slots;
-    size_t                           transition_capacity;
-    p101_fsm_state_id                initial_state;
-    bool                             primary_error_present;
-    bool                             target_error_present;
-    void                            *info_storage;
+    const struct p101_env         *target_env;
+    struct p101_error             *target_err;
+    struct p101_fsm_info          *info;
+    struct p101_fsm_transition_map transition_map;
+    p101_fsm_state_id              initial_state;
+    bool                           primary_error_present;
+    bool                           target_error_present;
+    int                            map_created;
+    void                          *info_storage;
 
     P101_TRACE(env);
     P101_WRAPPER_FAULT_RETURN(env, err, info, NULL);
-    target_env          = fsm_env == NULL ? env : fsm_env;
-    target_err          = fsm_err == NULL ? err : fsm_err;
-    info                = NULL;
-    transition_slots    = NULL;
-    transition_capacity = 0U;
-    initial_state       = P101_FSM_STATE_NONE;
+    target_env                      = fsm_env == NULL ? env : fsm_env;
+    target_err                      = fsm_err == NULL ? err : fsm_err;
+    info                            = NULL;
+    transition_map.rules            = NULL;
+    transition_map.performers       = NULL;
+    transition_map.slots            = NULL;
+    transition_map.table.rules      = NULL;
+    transition_map.table.slots      = NULL;
+    transition_map.table.rule_count = 0U;
+    transition_map.table.capacity   = 0U;
+    initial_state                   = P101_FSM_STATE_NONE;
 
     primary_error_present = p101_error_has_error(err);
     target_error_present  = p101_error_has_error(target_err);
@@ -120,8 +113,8 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
         goto done;
     }
 
-    transition_slots = fsm_transition_map_create(target_env, target_err, transitions, transition_count, &transition_capacity, &initial_state);
-    if(transition_slots == NULL)
+    map_created = fsm_transition_map_create(target_env, target_err, transitions, transition_count, &transition_map, &initial_state);
+    if(!map_created)
     {
         goto done;
     }
@@ -130,22 +123,20 @@ struct p101_fsm_info *p101_fsm_info_create(const struct p101_env *env, struct p1
     info         = (struct p101_fsm_info *)info_storage;
     if(info == NULL)
     {
-        p101_free(target_env, transition_slots);
+        fsm_transition_map_destroy(target_env, &transition_map);
         goto done;
     }
 
     info->name = p101_strdup(target_env, target_err, name);
     if(info->name == NULL)
     {
-        p101_free(target_env, transition_slots);
+        fsm_transition_map_destroy(target_env, &transition_map);
         p101_free(target_env, info);
         info = NULL;
         goto done;
     }
 
-    info->transition_slots         = transition_slots;
-    info->transition_capacity      = transition_capacity;
-    info->transition_count         = transition_count;
+    info->transitions              = transition_map;
     info->from_state_id            = P101_FSM_INIT;
     info->current_state_id         = initial_state;
     info->app_env                  = env;
@@ -179,7 +170,7 @@ void p101_fsm_info_destroy(const struct p101_env *env, struct p101_error *fsm_er
     }
 
     free_env = info->fsm_env == NULL ? env : info->fsm_env;
-    p101_free(free_env, info->transition_slots);
+    fsm_transition_map_destroy(free_env, &info->transitions);
     p101_free(free_env, info->name);
     p101_free(free_env, info);
     *pinfo = NULL;
@@ -541,7 +532,7 @@ p101_fsm_step_status p101_fsm_step(struct p101_fsm_info *info, void *arg, struct
                     P101_ERROR_RAISE_USER(err, "Bad-transition handler selected an invalid state", P101_FSM_ERROR_INVALID_DECISION);
                     break;
                 }
-                if(decision.next_state == info->current_state_id || info->redirect_count >= info->transition_count)
+                if(decision.next_state == info->current_state_id || info->redirect_count >= info->transitions.table.rule_count)
                 {
                     result->refusal = P101_FSM_REFUSAL_REDIRECT_CYCLE;
                     P101_ERROR_RAISE_USER(err, "Bad-transition handler entered a redirect cycle", P101_FSM_ERROR_HANDLER_LOOP);
@@ -793,67 +784,62 @@ static void fsm_prepare_result(struct p101_fsm_step_result *result)
 
 static p101_fsm_state_func fsm_transition(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id)
 {
-    const struct p101_fsm_transition_slot *slot;
+    p101_fsm_state_func           p101_single_result_;
+    struct p101_transition_result result;
+    p101_transition_status        status;
 
-    slot = fsm_transition_map_lookup(info, from_id, to_id, NULL);
-    return slot == NULL ? NULL : slot->perform;
+    p101_single_result_ = NULL;
+    status              = fsm_transition_map_lookup(info, from_id, to_id, &result);
+    if(status == P101_TRANSITION_OK && result.rule_index < info->transitions.table.rule_count)
+    {
+        p101_single_result_ = info->transitions.performers[result.rule_index];
+    }
+
+    return p101_single_result_;
 }
 
-static uint64_t fsm_wrapping_multiply(uint64_t left, uint64_t right)
+static int fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, struct p101_fsm_transition_map *map, p101_fsm_state_id *initial_state)
 {
-    uint64_t product;
-    bool     overflowed;
-
-    overflowed = __builtin_mul_overflow(left, right, &product);
-    (void)overflowed;
-    return product;
-}
-
-static size_t fsm_transition_hash(p101_fsm_state_id from_id, p101_fsm_state_id to_id)
-{
-    uint64_t hash;
-
-    hash = ((uint64_t)(uint32_t)from_id << FSM_HASH_KEY_SHIFT) | (uint64_t)(uint32_t)to_id;
-    hash ^= hash >> FSM_HASH_MIX_SHIFT_1;
-    hash = fsm_wrapping_multiply(hash, UINT64_C(0xbf58476d1ce4e5b9));
-    hash ^= hash >> FSM_HASH_MIX_SHIFT_2;
-    hash = fsm_wrapping_multiply(hash, UINT64_C(0x94d049bb133111eb));
-    hash ^= hash >> FSM_HASH_MIX_SHIFT_3;
-    return hash;
-}
-
-static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p101_env *env, struct p101_error *err, const struct p101_fsm_transition transitions[], size_t transition_count, size_t *capacity, p101_fsm_state_id *initial_state)
-{
-    struct p101_fsm_transition_slot *p101_single_result_;
-    struct p101_fsm_transition_slot *slots;
-    size_t                           initial_count;
-    void                            *slot_storage;
-    int                              inserted;
+    int                    p101_single_result_;
+    size_t                 capacity;
+    size_t                 initial_count;
+    void                  *rule_storage;
+    void                  *performer_storage;
+    void                  *slot_storage;
+    p101_transition_status transition_status;
 
     P101_TRACE(env);
-    if(transitions == NULL || transition_count == 0U || transition_count > SIZE_MAX / sizeof(*transitions) || capacity == NULL || initial_state == NULL)
+    p101_single_result_ = 0;
+    if(transitions == NULL || transition_count == 0U || transition_count > SIZE_MAX / sizeof(*transitions) || map == NULL || initial_state == NULL)
     {
         P101_ERROR_RAISE_USER(err, "FSM transition table cannot be empty", P101_FSM_ERROR_INVALID_TRANSITION_TABLE);
-        P101_TRACE_EXIT(env);
-        p101_single_result_ = NULL;
         goto p101_single_exit_;
     }
 
-    *capacity = fsm_transition_map_capacity(transition_count);
-    if(*capacity == 0U || *capacity > SIZE_MAX / sizeof(*slots))
+    capacity = p101_transition_table_capacity(transition_count);
+    if(capacity == 0U || capacity > SIZE_MAX / sizeof(*map->slots) || transition_count > SIZE_MAX / sizeof(*map->rules) || transition_count > SIZE_MAX / sizeof(*map->performers))
     {
         P101_ERROR_RAISE_USER(err, "FSM transition table is too large", P101_FSM_ERROR_INVALID_TRANSITION_TABLE);
-        P101_TRACE_EXIT(env);
-        p101_single_result_ = NULL;
         goto p101_single_exit_;
     }
-    slot_storage = p101_calloc(env, err, *capacity, sizeof(*slots));
-    slots        = (struct p101_fsm_transition_slot *)slot_storage;
-    if(slots == NULL)
+
+    rule_storage = p101_calloc(env, err, transition_count, sizeof(*map->rules));
+    map->rules   = (struct p101_transition_rule *)rule_storage;
+    if(map->rules == NULL)
     {
-        P101_TRACE_EXIT(env);
-        p101_single_result_ = NULL;
         goto p101_single_exit_;
+    }
+    performer_storage = p101_calloc(env, err, transition_count, sizeof(*map->performers));
+    map->performers   = (p101_fsm_state_func *)performer_storage;
+    if(map->performers == NULL)
+    {
+        goto invalid;
+    }
+    slot_storage = p101_calloc(env, err, capacity, sizeof(*map->slots));
+    map->slots   = (struct p101_transition_slot *)slot_storage;
+    if(map->slots == NULL)
+    {
+        goto invalid;
     }
 
     initial_count = 0U;
@@ -869,12 +855,11 @@ static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p
             initial_count++;
             *initial_state = transitions[i].to_id;
         }
-        inserted = fsm_transition_map_insert(slots, *capacity, &transitions[i]);
-        if(!inserted)
-        {
-            P101_ERROR_RAISE_USER_PRINTF(err, P101_FSM_ERROR_INVALID_TRANSITION_TABLE, "Duplicate FSM transition %d -> %d", transitions[i].from_id, transitions[i].to_id);
-            goto invalid;
-        }
+        map->rules[i].state      = transitions[i].from_id;
+        map->rules[i].event      = transitions[i].to_id;
+        map->rules[i].next_state = transitions[i].to_id;
+        map->rules[i].value      = i;
+        map->performers[i]       = transitions[i].perform;
     }
 
     if(initial_count != 1U)
@@ -883,113 +868,50 @@ static struct p101_fsm_transition_slot *fsm_transition_map_create(const struct p
         goto invalid;
     }
 
-    P101_TRACE_EXIT(env);
-    p101_single_result_ = slots;
+    transition_status = p101_transition_table_initialize(&map->table, map->rules, transition_count, map->slots, capacity);
+    if(transition_status != P101_TRANSITION_OK)
+    {
+        P101_ERROR_RAISE_USER(err, "FSM transition table contains a duplicate transition", P101_FSM_ERROR_INVALID_TRANSITION_TABLE);
+        goto invalid;
+    }
+    p101_single_result_ = 1;
     goto p101_single_exit_;
 
 invalid:
-    p101_free(env, slots);
+    fsm_transition_map_destroy(env, map);
+
+p101_single_exit_:
     P101_TRACE_EXIT(env);
-    p101_single_result_ = NULL;
-    goto p101_single_exit_;
-
-p101_single_exit_:
     return p101_single_result_;
 }
 
-static size_t fsm_transition_map_capacity(size_t transition_count)
+static void fsm_transition_map_destroy(const struct p101_env *env, struct p101_fsm_transition_map *map)
 {
-    size_t p101_single_result_;
-    size_t capacity;
-
-    capacity = FSM_TRANSITION_MIN_CAPACITY;
-    while(transition_count > capacity / 2U)
+    if(map != NULL)
     {
-        if(capacity > SIZE_MAX / 2U)
-        {
-            p101_single_result_ = 0U;
-            goto p101_single_exit_;
-        }
-        capacity *= 2U;
+        p101_free(env, map->slots);
+        p101_free(env, (void *)map->performers);
+        p101_free(env, map->rules);
+        map->slots            = NULL;
+        map->performers       = NULL;
+        map->rules            = NULL;
+        map->table.rules      = NULL;
+        map->table.slots      = NULL;
+        map->table.rule_count = 0U;
+        map->table.capacity   = 0U;
     }
-    p101_single_result_ = capacity;
-    goto p101_single_exit_;
-
-p101_single_exit_:
-    return p101_single_result_;
 }
 
-static int fsm_transition_map_insert(struct p101_fsm_transition_slot slots[], size_t capacity, const struct p101_fsm_transition *transition)
+static p101_transition_status fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id, struct p101_transition_result *result)
 {
-    int    p101_single_result_;
-    size_t hash;
-    size_t index;
+    p101_transition_status p101_single_result_;
 
-    hash  = fsm_transition_hash(transition->from_id, transition->to_id);
-    index = hash & (capacity - 1U);
-    for(size_t probes = 0U; probes < capacity; probes++)
+    p101_single_result_ = P101_TRANSITION_INVALID_ARGUMENT;
+    if(info != NULL)
     {
-        struct p101_fsm_transition_slot *slot = &slots[index];
-
-        if(!slot->occupied)
-        {
-            slot->from_id       = transition->from_id;
-            slot->to_id         = transition->to_id;
-            slot->perform       = transition->perform;
-            slot->occupied      = true;
-            p101_single_result_ = 1;
-            goto p101_single_exit_;
-        }
-        if(slot->from_id == transition->from_id && slot->to_id == transition->to_id)
-        {
-            p101_single_result_ = 0;
-            goto p101_single_exit_;
-        }
-        index = (index + 1U) & (capacity - 1U);
+        p101_single_result_ = p101_transition_table_find(&info->transitions.table, from_id, to_id, result);
     }
-    p101_single_result_ = 0;
-    goto p101_single_exit_;
 
-p101_single_exit_:
-    return p101_single_result_;
-}
-
-static const struct p101_fsm_transition_slot *fsm_transition_map_lookup(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id, size_t *probe_count)
-{
-    const struct p101_fsm_transition_slot *p101_single_result_;
-    size_t                                 hash;
-    size_t                                 index;
-
-    if(probe_count != NULL)
-    {
-        *probe_count = 0U;
-    }
-    hash  = fsm_transition_hash(from_id, to_id);
-    index = hash & (info->transition_capacity - 1U);
-    for(size_t probes = 0U; probes < info->transition_capacity; probes++)
-    {
-        const struct p101_fsm_transition_slot *slot = &info->transition_slots[index];
-
-        if(probe_count != NULL)
-        {
-            (*probe_count)++;
-        }
-        if(!slot->occupied)
-        {
-            p101_single_result_ = NULL;
-            goto p101_single_exit_;
-        }
-        if(slot->from_id == from_id && slot->to_id == to_id)
-        {
-            p101_single_result_ = slot;
-            goto p101_single_exit_;
-        }
-        index = (index + 1U) & (info->transition_capacity - 1U);
-    }
-    p101_single_result_ = NULL;
-    goto p101_single_exit_;
-
-p101_single_exit_:
     return p101_single_result_;
 }
 
@@ -1004,13 +926,20 @@ void p101_fsm_test_set_step_sequence(struct p101_fsm_info *info, size_t sequence
 
 size_t p101_fsm_test_transition_probe_count(const struct p101_fsm_info *info, p101_fsm_state_id from_id, p101_fsm_state_id to_id)
 {
-    size_t probe_count;
+    size_t                        p101_single_result_;
+    struct p101_transition_result result;
+    p101_transition_status        status;
 
+    p101_single_result_ = 0U;
     if(info == NULL)
     {
-        return 0U;
+        goto p101_single_exit_;
     }
-    (void)fsm_transition_map_lookup(info, from_id, to_id, &probe_count);
-    return probe_count;
+    status = fsm_transition_map_lookup(info, from_id, to_id, &result);
+    (void)status;
+    p101_single_result_ = result.probes;
+
+p101_single_exit_:
+    return p101_single_result_;
 }
 #endif

@@ -2,6 +2,11 @@
 
 Welcome to the `lib_fsm` repository — a finite state machine library, part of the Programming 101 C library collection. This guide will help you set up, build, and install the library.
 
+`lib_fsm` owns executable state-machine policy: callbacks, decisions, effects,
+receipts, notifications, and error reporting. Its transition index is provided
+by the allocation-free `lib_transition` mechanism; `lib_fsm` retains ownership
+of all allocated storage and executable behavior.
+
 ## **Table of Contents**
 
 1. [Cloning the Repository](#cloning-the-repository)

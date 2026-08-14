@@ -46,4 +46,5 @@ set(p101_fsm_LINK_LIBRARIES
         p101_env
         p101_c
         p101_text
+        p101_transition
 )
